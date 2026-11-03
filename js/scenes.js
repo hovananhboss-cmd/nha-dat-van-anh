@@ -3,7 +3,7 @@ import { bboxOf, haversine, sliceLine, circlePolygon, edgeLengths, fmtDist, poly
 import { CATS } from './data.js';
 import {
   ease, clamp, seg, font, rrect, wrap, shadow, noShadow, plotMarker, poiPin, poiCard, pill, hexA,
-  drawCover, boxesOverlap, FONT,
+  drawCover, boxesOverlap, FONT, comet, measureCard, cardBox,
 } from './overlay.js';
 
 const ISO_COLORS = { 5: '#22c55e', 10: '#eab308', 15: '#f97316' };
@@ -193,6 +193,39 @@ export function buildTimeline(S) {
     },
   });
 
+  // 2b. Đường chính gần nhất: đường dẫn sáng từ lô đất tới điểm gần nhất trên tuyến
+  const ROAD_CAT = { color: '#facc15', icon: '🛣️' };
+  roadsSel.forEach((rd, i) => {
+    const cn = rd.connector;
+    if (!cn) return;
+    const coords = cn.coords.length >= 2 ? cn.coords : [center, cn.point];
+    const ctxPts = rd.lines.flat().filter((q) => haversine(q, cn.point) < 450);
+    const fr = fit(coords.concat(ctxPts, [center]), L.fitPad, 18.2);
+    const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 42, bearing: i % 2 ? 12 : -12 };
+    const sub = cn.distance < 25 ? 'Ngay mặt tiền đường' : routeSub(cn.distance, cn.road);
+    add({
+      name: 'road', dur: 3.2, to,
+      cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.4)), arcFor(this.from, this.to, cw) * 0.4); },
+      ms(p) {
+        const f = ease.inOut(seg(p, 0.22, 0.66));
+        return {
+          plot: 1, glow: 0.5, roads: 0.45 + 0.55 * ease.out(seg(p, 0.55, 0.8)),
+          routes: { type: 'FeatureCollection', features: f > 0 ? [lineF(sliceLine(coords, f), ROAD_CAT.color, true)] : [] },
+          routesKey: `road${i}-${Math.round(f * 240)}`,
+        };
+      },
+      draw(ctx, p, lt, E) {
+        drawPlotMarker(ctx, E, lt, 1, null);
+        const f = ease.inOut(seg(p, 0.22, 0.66));
+        if (f > 0 && f < 1) drawComet(ctx, E, coords, f, ROAD_CAT.color, lt);
+        const [x, y] = E.project(cn.point);
+        poiPin(ctx, x, y, E.u, ROAD_CAT, ease.back(seg(p, 0.62, 0.76)));
+        poiCard(ctx, x, y, E.u, ROAD_CAT, rd.name, sub, ease.out(seg(p, 0.66, 0.8)), { bounds: E.safe, place: y < E.H * 0.3 ? 'bottom' : 'top' });
+        drawHeader(ctx, E, '🛣️ ĐƯỜNG CHÍNH GẦN NHẤT', '', 1, true);
+      },
+    });
+  });
+
   // 3. Vùng thời gian di chuyển
   if (S.iso && S.iso.length) {
     const all = [];
@@ -256,7 +289,9 @@ export function buildTimeline(S) {
         },
         draw(ctx, p, lt, E) {
           drawPlotMarker(ctx, E, lt, 1, null);
-          for (const d of prev) { const [x, y] = E.project(d.poi.lngLat); poiPin(ctx, x, y, E.u, CATS[d.poi.cat], 0.7); }
+          for (const d of prev) { const [x, y] = E.project(d.poi.lngLat); poiPin(ctx, x, y, E.u, CATS[d.poi.cat], 0.6); }
+          const fr = ease.inOut(seg(p, 0.2, 0.72));
+          if (fr > 0 && fr < 1) drawComet(ctx, E, coords, fr, color, lt);
           const pop = ease.back(seg(p, 0.66, 0.8));
           const [x, y] = E.project(poi.lngLat);
           poiPin(ctx, x, y, E.u, CATS[poi.cat], pop);
@@ -286,6 +321,86 @@ export function buildTimeline(S) {
         drawPlotMarker(ctx, E, lt, 1, clean ? null : 'VỊ TRÍ');
         drawPoiLabels(ctx, E, pois.map((x, i) => ({ poi: x, a: ease.out(seg(p, 0.35 + i * 0.03, 0.5 + i * 0.03)) })), true, false);
         drawHeader(ctx, E, 'KẾT NỐI THUẬN TIỆN', `${pois.length} tiện ích quanh khu vực`, ease.out(seg(p, 0.05, 0.25)));
+      },
+    });
+  }
+
+  // 5b. Kết nối vùng: đường đi tới các điểm mốc lớn
+  const lms = S.landmarks || [];
+  if (lms.length) {
+    const all = [center];
+    lms.forEach((l) => { all.push(l.lngLat); if (l.route) all.push(...l.route.coords.filter((_, k) => k % 8 === 0)); });
+    const fr = fit(all, L.fitPad, 15);
+    const to = { ...fr, zoom: fr.zoom - 0.15, pitch: 30, bearing: 0 };
+    const to2 = { ...to, zoom: to.zoom + 0.12, bearing: 10 };
+    const n = lms.length;
+    const fOf = (p, i) => ease.inOut(seg(p, 0.24 + i * (0.54 / n), 0.24 + i * (0.54 / n) + 0.26));
+    const lcoords = lms.map((l) => (l.route ? l.route.coords : [center, l.lngLat]));
+    add({
+      name: 'region', dur: 3.4 + n * 1.25, to: to2,
+      cam(p) {
+        if (p < 0.24) return lerpCam(this.from, to, ease.inOut(p / 0.24), arcFor(this.from, to, cw) * 0.3);
+        return lerpCam(to, to2, (p - 0.24) / 0.76);
+      },
+      ms(p) {
+        const features = [];
+        let key = 'reg';
+        lms.forEach((l, i) => {
+          const f = fOf(p, i);
+          key += ',' + Math.round(f * 160);
+          if (f > 0) features.push(lineF(f >= 1 ? lcoords[i] : sliceLine(lcoords[i], f), l.color, f < 1));
+        });
+        return { plot: 1, glow: 0.7, roads: 0.3, routes: { type: 'FeatureCollection', features }, routesKey: key };
+      },
+      draw(ctx, p, lt, E) {
+        drawPlotMarker(ctx, E, lt, 1, null);
+        lms.forEach((l, i) => { const f = fOf(p, i); if (f > 0 && f < 1) drawComet(ctx, E, lcoords[i], f, l.color, lt); });
+        drawLabeled(ctx, E, lms.map((l, i) => ({
+          lngLat: l.lngLat, title: l.short || l.name, sub: landmarkSub(l), cat: { color: l.color, icon: l.icon },
+          a: ease.out(seg(fOf(p, i), 0.92, 1)),
+        })), 0.92);
+        drawHeader(ctx, E, '🌏 KẾT NỐI VÙNG', `${n} điểm mốc quan trọng`, ease.out(seg(p, 0.05, 0.2)));
+      },
+    });
+  }
+
+  // 5c. Hạ tầng giao thông đang thi công gần nhà
+  const infra = S.infra || [];
+  if (infra.length) {
+    const all = [center];
+    infra.forEach((f) => { f.segments.forEach(([, l]) => all.push(l[0], l[l.length - 1])); all.push(f.nearest.point); });
+    const fi = fit(all, L.fitPad, 14);
+    const to = { ...fi, zoom: fi.zoom - 0.1, pitch: 22, bearing: 0 };
+    const n = infra.length;
+    const kOf = (p, i) => ease.inOut(seg(p, 0.14 + i * (0.5 / n), 0.14 + i * (0.5 / n) + 0.32));
+    const lOf = (p, i) => ease.out(seg(p, 0.7 + i * 0.04, 0.84 + i * 0.04));
+    add({
+      name: 'infra', dur: 3.4 + n * 1.5, to,
+      cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.2)), arcFor(this.from, this.to, cw) * 0.6); },
+      ms(p) {
+        const features = [];
+        let key = 'inf';
+        infra.forEach((f, i) => {
+          const k = kOf(p, i);
+          key += ',' + Math.round(k * 80);
+          for (const [o, l] of f.segments) if (o <= k) features.push({ type: 'Feature', properties: { color: f.color, kind: 'line' }, geometry: { type: 'LineString', coordinates: l } });
+          const lk = lOf(p, i);
+          if (lk > 0) {
+            const q = f.nearest.point;
+            const end = [center[0] + (q[0] - center[0]) * lk, center[1] + (q[1] - center[1]) * lk];
+            features.push({ type: 'Feature', properties: { color: f.color, kind: 'link' }, geometry: { type: 'LineString', coordinates: [center, end] } });
+            key += 'l' + Math.round(lk * 40);
+          }
+        });
+        return { plot: 1, glow: 0.8, roads: 0, infra: { type: 'FeatureCollection', features }, infraKey: key };
+      },
+      draw(ctx, p, lt, E) {
+        drawPlotMarker(ctx, E, lt, 1, null);
+        drawLabeled(ctx, E, infra.map((f, i) => ({
+          lngLat: f.nearest.point, title: '🚧 ' + f.name, sub: `cách ~${fmtDist(f.nearest.dist)}`, cat: { color: f.color, icon: '🚧' },
+          a: ease.out(seg(lOf(p, i), 0.85, 1)),
+        })), 0.9);
+        drawHeader(ctx, E, '🚧 HẠ TẦNG ĐANG THI CÔNG', 'gần khu vực', ease.out(seg(p, 0.04, 0.2)));
       },
     });
   }
@@ -605,41 +720,56 @@ export function buildTimeline(S) {
   }
 
   function drawPoiLabels(ctx, E, items, compact, withSub) {
+    drawLabeled(ctx, E, items.map((it) => ({
+      lngLat: it.poi.lngLat, title: it.poi.name, cat: CATS[it.poi.cat], a: it.a,
+      sub: withSub ? `cách ${fmtDist(it.poi.dist)}` : compact ? (it.poi.route ? fmtDist(it.poi.route.distance) : fmtDist(it.poi.dist)) : '',
+    })), compact ? 0.8 : 0.88);
+  }
+
+  // Vẽ ghim + thẻ tên, tự chọn vị trí thẻ để không chồng lên nhau / ra ngoài khung
+  function drawLabeled(ctx, E, items, scale = 0.9) {
+    const uu = E.u * scale;
     const placed = [];
     const [px, py] = E.project(plot ? centroidOf(plot) : center);
-    placed.push({ x: px - 40 * E.u, y: py - 130 * E.u, w: 80 * E.u, h: 140 * E.u });
-    const positions = items.map((it) => ({ ...it, xy: E.project(it.poi.lngLat) }));
-    for (const it of positions) poiPin(ctx, it.xy[0], it.xy[1], E.u, CATS[it.poi.cat], ease.back(Math.min(1, it.a)));
+    placed.push({ x: px - 50 * E.u, y: py - 150 * E.u, w: 100 * E.u, h: 170 * E.u });
+    const positions = items.map((it) => ({ ...it, xy: E.project(it.lngLat) }));
+    for (const it of positions) if (it.a > 0.01) poiPin(ctx, it.xy[0], it.xy[1], uu, it.cat, ease.back(Math.min(1, it.a)));
     for (const it of positions) {
       if (it.a <= 0.01) continue;
       const [x, y] = it.xy;
-      const sub = withSub ? `cách ${fmtDist(it.poi.dist)}` : compact ? (it.poi.route ? fmtDist(it.poi.route.distance) : fmtDist(it.poi.dist)) : '';
-      let ok = null;
-      for (const place of ['top', 'bottom', 'right', 'left']) {
-        const box = tryCard(ctx, E, x, y, it.poi, sub, place);
-        if (!box) continue;
-        if (placed.every((b) => !boxesOverlap(b, box, 6 * E.u))) { ok = place; placed.push(box); break; }
+      const m = measureCard(ctx, uu, it.title, it.sub, 360 * E.u);
+      let ok = null, best = null, bestCost = Infinity;
+      for (const place of ['top', 'bottom', 'right', 'left', 'tr', 'tl', 'br', 'bl']) {
+        const box = cardBox(x, y, uu, m, place);
+        const sf = E.safe;
+        if (box.x < sf.x0 || box.y < sf.y0 || box.x + box.w > sf.x1 || box.y + box.h > sf.y1) continue;
+        const cost = placed.reduce((acc, b) => acc + overlapArea(b, box), 0);
+        if (cost === 0) { ok = place; placed.push(box); break; }
+        if (cost < bestCost) { bestCost = cost; best = [place, box]; }
       }
-      if (ok) poiCard(ctx, x, y, E.u * (compact ? 0.82 : 0.9), CATS[it.poi.cat], it.poi.name, sub, it.a, { place: ok, maxW: 300 * E.u, bounds: E.safe });
+      // Không có chỗ trống hoàn toàn: chọn vị trí bị che ít nhất (nếu che < 35% thẻ)
+      if (!ok && best && bestCost < 0.35 * best[1].w * best[1].h) { ok = best[0]; placed.push(best[1]); }
+      if (ok) poiCard(ctx, x, y, uu, it.cat, it.title, it.sub, it.a, { place: ok, maxW: 360 * E.u });
     }
   }
 
-  function tryCard(ctx, E, x, y, poi, sub, place) {
-    // đo hộp mà không vẽ
-    const u = E.u * 0.86;
-    font(ctx, 26 * u, 700);
-    const lines = wrap(ctx, poi.name, 300 * E.u, 2);
-    let w = Math.max(...lines.map((l) => ctx.measureText(l).width));
-    if (sub) { font(ctx, 22 * u, 600); w = Math.max(w, ctx.measureText(sub).width); }
-    w += 32 * u;
-    const h = lines.length * 32 * u + (sub ? 30 * u : 0) + 22 * u;
-    let bx = x - w / 2, by = y - 44 * u - h;
-    if (place === 'bottom') by = y + 44 * u;
-    if (place === 'left') { bx = x - 40 * u - w; by = y - h / 2; }
-    if (place === 'right') { bx = x + 40 * u; by = y - h / 2; }
-    const s = E.safe;
-    if (bx < s.x0 || by < s.y0 || bx + w > s.x1 || by + h > s.y1) return null;
-    return { x: bx, y: by, w, h };
+  function drawComet(ctx, E, coords, f, color, lt) {
+    const part = sliceLine(coords, f);
+    const [x, y] = E.project(part[part.length - 1]);
+    comet(ctx, x, y, E.u, color, lt);
+  }
+
+  function routeSub(dist, onRoad) {
+    const mins = Math.max(1, Math.round((dist / 1000 / speed) * 60));
+    return `${onRoad ? '' : '~'}${fmtDist(dist)} · ${fmtMins(mins)}`;
+  }
+
+  function landmarkSub(l) {
+    const r = l.route;
+    if (!r) return `~${fmtDist(haversine(center, l.lngLat) * 1.3)}`;
+    // đường dài: dùng thời gian ô tô của OSRM + 30% kẹt xe; quãng ngắn: theo tốc độ đã chọn
+    const mins = r.road && r.duration && r.distance > 8000 ? Math.round((r.duration * 1.3) / 60) : Math.round((r.distance / 1000 / speed) * 60);
+    return `${r.road ? '' : '~'}${fmtDist(r.distance)} · ${fmtMins(Math.max(1, mins))}`;
   }
 
   function drawMedia(ctx, E, m, p, dir) {
@@ -759,6 +889,7 @@ export function buildTimeline(S) {
       if (!('routesKey' in ms)) { ms.routesKey = 'none'; ms.routes = null; }
       if (ms.routesKey === 'all') ms.routes = { type: 'FeatureCollection', features: doneRoutes.map((r) => lineF(r.coords, r.color, false)) };
       if (!('radarKey' in ms)) { ms.radarKey = 'none'; ms.radar = null; }
+      if (!('infraKey' in ms)) { ms.infraKey = 'none'; ms.infra = null; }
       S.stage.apply(ms);
     },
     async prepare(t) {
@@ -782,6 +913,18 @@ export function buildTimeline(S) {
       ctx.restore();
     },
   };
+}
+
+function overlapArea(a, b) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+function fmtMins(m) {
+  if (m < 60) return `${m} phút`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h} giờ ${r} phút` : `${h} giờ`;
 }
 
 function lineF(coords, color, active) {

@@ -105,8 +105,18 @@
           <select id="poiCatFilter"><option value="">Tất cả loại</option></select>
         </div>
         <div id="poiList" class="poi-list"><p class="empty">Chưa có dữ liệu – bấm “Quét tiện ích”.</p></div>
-        <label>Đường chính gần nhất (chọn tối đa 2 để làm nổi bật)</label>
+        <label>🛣️ Đường chính gần nhất (chọn tối đa 2 – video vẽ đường nối từ lô đất tới)</label>
         <div id="roadList" class="road-list"><p class="empty">—</p></div>
+        <label>🌏 Kết nối vùng – điểm mốc lớn (chọn tối đa 6)</label>
+        <div id="lmList" class="road-list"></div>
+        <div class="row">
+          <input id="lmSearch" placeholder="Thêm điểm mốc khác, VD: Vincom Thủ Đức, KCN VSIP 1…">
+          <button id="btnLmAdd">Thêm</button>
+        </div>
+        <div id="lmResults" class="results"></div>
+        <label>🚧 Hạ tầng đang thi công gần nhà</label>
+        <div id="infraList" class="road-list"></div>
+        <p class="hint">Tuyến hạ tầng lấy từ OpenStreetMap (11/2026), chỉ gồm các đoạn đã có tên trên bản đồ. Điểm mốc cách hơn 80 km và tuyến cách hơn 40 km sẽ không đưa vào video.</p>
         <div class="row wrap">
           <label class="inline"><input type="checkbox" id="chkIso"> Hiện vùng 5–10–15 phút di chuyển</label>
           <select id="selIsoMode"><option value="motor_scooter">Xe máy</option><option value="auto">Ô tô</option><option value="bicycle">Xe đạp</option><option value="pedestrian">Đi bộ</option></select>

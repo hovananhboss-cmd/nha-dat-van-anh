@@ -104,42 +104,78 @@ export function plotMarker(ctx, x, y, u, t, color, label = 'VỊ TRÍ') {
 
 export function poiPin(ctx, x, y, u, cat, scale = 1) {
   if (scale <= 0.01) return;
-  const r = 26 * u * scale;
-  shadow(ctx, 10 * u, 'rgba(0,0,0,.4)', 4 * u);
+  const r = 36 * u * scale;
+  // quầng sáng theo màu loại tiện ích
+  const g = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * 2.1);
+  g.addColorStop(0, hexA(cat.color, 0.55));
+  g.addColorStop(1, hexA(cat.color, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.1, 0, Math.PI * 2);
+  ctx.fill();
+  shadow(ctx, 14 * u, 'rgba(0,0,0,.45)', 5 * u);
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = cat.color;
+  ctx.fillStyle = '#ffffff';
   ctx.fill();
   noShadow(ctx);
-  ctx.lineWidth = 4 * u * scale;
-  ctx.strokeStyle = '#fff';
-  ctx.stroke();
-  font(ctx, 26 * u * scale);
+  ctx.beginPath();
+  ctx.arc(x, y, r - 5 * u * scale, 0, Math.PI * 2);
+  ctx.fillStyle = cat.color;
+  ctx.fill();
+  font(ctx, 34 * u * scale);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(cat.icon, x, y + 1 * u);
+  ctx.fillText(cat.icon, x, y + 2 * u * scale);
+}
+
+// Đốm sáng chạy ở đầu đường dẫn
+export function comet(ctx, x, y, u, color, t = 0) {
+  const pulse = 1 + 0.15 * Math.sin(t * 12);
+  const R = 52 * u * pulse;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, hexA(color, 0.95));
+  g.addColorStop(1, hexA(color, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Thẻ tên tiện ích: trả về hộp đã vẽ để tránh chồng lấn
+export const CARD = { title: 31, sub: 26, lh: 38, subH: 36, pad: 20, gap: 54 };
+
 export function measureCard(ctx, u, title, sub, maxW) {
-  font(ctx, 26 * u, 700);
+  font(ctx, CARD.title * u, 700);
   const lines = wrap(ctx, title, maxW, 2);
   let w = Math.max(...lines.map((l) => ctx.measureText(l).width));
-  if (sub) { font(ctx, 22 * u, 600); w = Math.max(w, ctx.measureText(sub).width); }
-  const pad = 16 * u;
-  const h = lines.length * 32 * u + (sub ? 30 * u : 0) + pad * 1.4;
-  return { lines, w: w + pad * 2, h };
+  if (sub) { font(ctx, CARD.sub * u, 700); w = Math.max(w, ctx.measureText(sub).width); }
+  const pad = CARD.pad * u;
+  const h = lines.length * CARD.lh * u + (sub ? CARD.subH * u : 0) + pad * 1.3;
+  return { lines, w: w + pad * 2 + 8 * u, h };
+}
+
+// Vị trí hộp thẻ quanh ghim (dùng chung cho vẽ và chống chồng lấn)
+export function cardBox(x, y, u, m, place) {
+  let bx = x - m.w / 2, by = y - CARD.gap * u - m.h;
+  if (place === 'bottom') by = y + CARD.gap * u;
+  if (place === 'left') { bx = x - CARD.gap * u - m.w; by = y - m.h / 2; }
+  if (place === 'right') { bx = x + CARD.gap * u; by = y - m.h / 2; }
+  const d = CARD.gap * 0.75 * u;
+  if (place === 'tr') { bx = x + d; by = y - d - m.h; }
+  if (place === 'tl') { bx = x - d - m.w; by = y - d - m.h; }
+  if (place === 'br') { bx = x + d; by = y + d; }
+  if (place === 'bl') { bx = x - d - m.w; by = y + d; }
+  return { x: bx, y: by, w: m.w, h: m.h };
 }
 
 export function poiCard(ctx, x, y, u, cat, title, sub, alpha = 1, opts = {}) {
   if (alpha <= 0.01) return null;
-  const maxW = opts.maxW || 420 * u;
+  const maxW = opts.maxW || 500 * u;
   const m = measureCard(ctx, u, title, sub, maxW);
   const place = opts.place || 'top';
-  let bx = x - m.w / 2, by = y - 44 * u - m.h;
-  if (place === 'bottom') by = y + 44 * u;
-  if (place === 'left') { bx = x - 40 * u - m.w; by = y - m.h / 2; }
-  if (place === 'right') { bx = x + 40 * u; by = y - m.h / 2; }
+  let { x: bx, y: by } = cardBox(x, y, u, m, place);
   if (opts.bounds) {
     const b = opts.bounds;
     bx = clamp(bx, b.x0, b.x1 - m.w);
@@ -147,24 +183,29 @@ export function poiCard(ctx, x, y, u, cat, title, sub, alpha = 1, opts = {}) {
   }
   ctx.save();
   ctx.globalAlpha *= alpha;
-  const pad = 16 * u;
-  shadow(ctx, 16 * u, 'rgba(0,0,0,.35)', 6 * u);
-  rrect(ctx, bx, by, m.w, m.h, 16 * u);
+  const pad = CARD.pad * u;
+  // viền sáng theo màu tiện ích
+  shadow(ctx, 22 * u, hexA(cat.color, 0.55), 0);
+  rrect(ctx, bx, by, m.w, m.h, 18 * u);
   ctx.fillStyle = 'rgba(255,255,255,.97)';
   ctx.fill();
   noShadow(ctx);
+  ctx.lineWidth = 3 * u;
+  ctx.strokeStyle = hexA(cat.color, 0.9);
+  ctx.stroke();
   ctx.fillStyle = cat.color;
-  rrect(ctx, bx, by, 8 * u, m.h, 4 * u);
+  rrect(ctx, bx, by, 10 * u, m.h, 5 * u);
   ctx.fill();
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  font(ctx, 26 * u, 700);
+  font(ctx, CARD.title * u, 700);
   ctx.fillStyle = '#0f172a';
-  m.lines.forEach((l, i) => ctx.fillText(l, bx + pad, by + pad * 0.7 + i * 32 * u));
+  const tx = bx + pad + 8 * u;
+  m.lines.forEach((l, i) => ctx.fillText(l, tx, by + pad * 0.65 + i * CARD.lh * u));
   if (sub) {
-    font(ctx, 22 * u, 600);
+    font(ctx, CARD.sub * u, 700);
     ctx.fillStyle = cat.color;
-    ctx.fillText(sub, bx + pad, by + pad * 0.7 + m.lines.length * 32 * u + 2 * u);
+    ctx.fillText(sub, tx, by + pad * 0.65 + m.lines.length * CARD.lh * u + 4 * u);
   }
   ctx.restore();
   return { x: bx, y: by, w: m.w, h: m.h };

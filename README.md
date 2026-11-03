@@ -11,14 +11,14 @@ Công cụ tạo **video giới thiệu vị trí lô đất / căn nhà và ti�
 | Bước | Làm được gì |
 |---|---|
 | 1. Vị trí & ranh đất | Dán link Google Maps / toạ độ / tìm địa chỉ · kéo ghim chỉnh vị trí · **vẽ ranh lô đất** bằng cách chạm từng góc trên ảnh vệ tinh · **nhập toạ độ VN-2000 trên sổ đỏ** (tự đổi sang GPS theo kinh tuyến trục từng tỉnh) · tự đo diện tích và chiều dài các cạnh |
-| 2. Tiện ích xung quanh | Tự quét trường học, bệnh viện, chợ, siêu thị, TTTM, công viên, ngân hàng, UBND, bến xe/ga, KCN… trong bán kính 1–8 km · chọn tối đa 10 · thêm điểm còn thiếu bằng tay · làm nổi bật 2 tuyến đường chính · **vùng 5–10–15 phút** di chuyển (xe máy / ô tô / đi bộ) theo đường thật |
+| 2. Tiện ích xung quanh | Tự quét trường học, bệnh viện, chợ, siêu thị, TTTM, công viên, ngân hàng, UBND, bến xe/ga… trong bán kính 1–8 km · chọn tối đa 10 · thêm điểm còn thiếu bằng tay · **đường chính gần nhất**: vẽ đường nối từ lô đất tới · **kết nối vùng**: đường đi tới các điểm mốc lớn (Trung tâm TP.HCM, Thủ Dầu Một, sân bay Tân Sơn Nhất, Long Thành, cảng Cát Lái, bến xe, Khu công nghệ cao… hoặc tự thêm) · **hạ tầng đang thi công**: Cao tốc TP.HCM – Thủ Dầu Một – Chơn Thành, Vành đai 3, Vành đai 4 · **vùng 5–10–15 phút** di chuyển |
 | 3. Thông tin | Giá, diện tích, kích thước, kết cấu, hướng, pháp lý, điểm nổi bật, tên + SĐT môi giới · tối đa 6 ảnh + 3 video ngắn |
 | 4. Kiểu video | **36 mẫu bản đồ**: 3 mẫu tự thiết kế (**🌙 Đêm sang trọng**, **☀️ Ngày hiện đại**, **🛰️ Vệ tinh + tên đường**), 32 theme nghệ thuật (Dark Gold, Midnight Neon, Blueprint, Arctic Frost, Paper Heritage…) và các mẫu cổ điển · **flycam bay quanh vị trí** 360° / 180° / 90° · **khối 3D phát sáng** đánh dấu lô đất · bay theo đường đi tới từng tiện ích hoặc quét radar · màu chủ đạo · tốc độ |
 | 5. Kịch bản & âm thanh | Tự viết kịch bản theo 4 giọng văn · **thu âm giọng đọc ngay trong app** hoặc tải file giọng AI (Vbee, FPT.AI, CapCut…) · nhạc nền · **phụ đề tự động** · video tự kéo dài theo giọng đọc |
 | Video sạch | Bật mặc định: video **chỉ hiện lô đất, diện tích và tiện ích** – không tiêu đề, giá, “liên hệ xem nhà”, số điện thoại hay phụ đề. Bỏ chọn ở bước 4 nếu muốn hiện đầy đủ. |
 | 6. Xuất | Xem trước, tua · xuất MP4 · tải ảnh bìa · lưu / mở dự án (file .json) |
 
-Video gồm các cảnh: camera lao thẳng từ trên cao xuống lô đất → zoom sát, lô đất phát sáng và hiện **diện tích** (lấy đúng số tính từ toạ độ sổ đỏ) → flycam bay vòng quanh lô đất (khối 3D phát sáng) → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
+Video gồm các cảnh: camera lao thẳng từ trên cao xuống lô đất → zoom sát, lô đất phát sáng và hiện **diện tích** (lấy đúng số tính từ toạ độ sổ đỏ) → flycam bay vòng quanh lô đất (khối 3D phát sáng) → đường nối tới đường chính → đường dẫn neon phát sáng tới từng tiện ích → toàn cảnh → kết nối vùng tới các điểm mốc lớn → hạ tầng đang thi công → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
 
 ## Cách dùng
 
@@ -70,6 +70,9 @@ js/geo.js         toạ độ, đọc link Google Maps, VN-2000, đo diện tíc
 js/data.js        lấy tiện ích / đường đi / vùng thời gian / tìm địa chỉ
 js/mapstyles.js   bộ dựng mẫu bản đồ (Đêm / Ngày / Vệ tinh / theme nghệ thuật)
 js/themes-artistic.js  32 bảng màu nghệ thuật (MapToPoster JS, MIT)
+js/regional.js    điểm mốc lớn (kết nối vùng) & tính khoảng cách tới hạ tầng
+js/infra-data.js  tuyến Vành đai 3, Vành đai 4, Cao tốc TP.HCM – Thủ Dầu Một – Chơn Thành (© OpenStreetMap)
+js/tiles.js       đọc tiện ích & tên đường trực tiếp từ ô bản đồ OpenFreeMap
 js/ocr.js         đọc bảng toạ độ từ ảnh sổ đỏ
 js/stage.js       bản đồ dựng video và các lớp (ranh, đường, vùng phút)
 js/scenes.js      kịch bản chuyển động camera và đồ hoạ từng cảnh

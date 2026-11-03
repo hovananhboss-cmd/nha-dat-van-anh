@@ -27,7 +27,7 @@ export class Stage {
     this.container = container;
     this.map = null;
     this.cache = {};
-    this.data = { plot: EMPTY, iso: EMPTY, roads: EMPTY, routes: EMPTY, radar: EMPTY };
+    this.data = { plot: EMPTY, iso: EMPTY, roads: EMPTY, infra: EMPTY, routes: EMPTY, radar: EMPTY };
     this.theme = '#e11d48';
     this.hidePoi = true;
     this.plotHeight = 18; // mét
@@ -87,10 +87,24 @@ export class Stage {
       paint: { 'line-color': '#facc15', 'line-width': 6, 'line-opacity': 0 } });
     m.addLayer({ id: 'va-radar-fill', type: 'fill', source: 'va-radar', paint: { 'fill-color': th, 'fill-opacity': 0.12 } });
     m.addLayer({ id: 'va-radar-line', type: 'line', source: 'va-radar', paint: { 'line-color': th, 'line-width': 3, 'line-opacity': 0.9 } });
-    m.addLayer({ id: 'va-route-casing', type: 'line', source: 'va-routes', layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#ffffff', 'line-width': ['case', ['get', 'active'], 11, 7], 'line-opacity': ['case', ['get', 'active'], 1, 0.7] } });
-    m.addLayer({ id: 'va-route', type: 'line', source: 'va-routes', layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'active'], 6.5, 3.5], 'line-opacity': ['case', ['get', 'active'], 1, 0.7] } });
+    // Hạ tầng đang thi công: cam phát sáng + vạch trắng đứt quãng
+    const RL = { 'line-cap': 'round', 'line-join': 'round' };
+    m.addLayer({ id: 'va-infra-glow', type: 'line', source: 'va-infra', layout: RL,
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['==', ['get', 'kind'], 'link'], 10, 26], 'line-blur': 14, 'line-opacity': 0.6 } });
+    m.addLayer({ id: 'va-infra', type: 'line', source: 'va-infra', layout: RL,
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['==', ['get', 'kind'], 'link'], 3, 7] } });
+    m.addLayer({ id: 'va-infra-dash', type: 'line', source: 'va-infra', filter: ['!=', ['get', 'kind'], 'link'],
+      paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [2, 2.5], 'line-opacity': 0.9 } });
+    // Đường dẫn kiểu neon: quầng sáng rộng + viền trắng + lõi màu + chỉ sáng giữa
+    const act = (a, b) => ['case', ['get', 'active'], a, b];
+    m.addLayer({ id: 'va-route-glow', type: 'line', source: 'va-routes', layout: RL,
+      paint: { 'line-color': ['get', 'color'], 'line-width': act(30, 14), 'line-blur': act(16, 9), 'line-opacity': act(0.75, 0.4) } });
+    m.addLayer({ id: 'va-route-casing', type: 'line', source: 'va-routes', layout: RL,
+      paint: { 'line-color': '#ffffff', 'line-width': act(12, 7), 'line-opacity': act(1, 0.75) } });
+    m.addLayer({ id: 'va-route', type: 'line', source: 'va-routes', layout: RL,
+      paint: { 'line-color': ['get', 'color'], 'line-width': act(8, 4), 'line-opacity': act(1, 0.85) } });
+    m.addLayer({ id: 'va-route-core', type: 'line', source: 'va-routes', layout: RL, filter: ['==', ['get', 'active'], true],
+      paint: { 'line-color': '#ffffff', 'line-width': 2.2, 'line-opacity': 0.85 } });
     m.addLayer({ id: 'va-plot-halo', type: 'line', source: 'va-plot', paint: { 'line-color': th, 'line-width': 40, 'line-blur': 30, 'line-opacity': 0 } });
     m.addLayer({ id: 'va-plot-fill', type: 'fill', source: 'va-plot', paint: { 'fill-color': th, 'fill-opacity': 0.35 } });
     m.addLayer({ id: 'va-plot-glow', type: 'line', source: 'va-plot', paint: { 'line-color': th, 'line-width': 12, 'line-blur': 6, 'line-opacity': 0.6 } });
@@ -148,6 +162,10 @@ export class Stage {
     if (ms.routesKey !== this.cache.routesKey) {
       this.cache.routesKey = ms.routesKey;
       this.setData('routes', ms.routes || EMPTY);
+    }
+    if (ms.infraKey !== this.cache.infraKey) {
+      this.cache.infraKey = ms.infraKey;
+      this.setData('infra', ms.infra || EMPTY);
     }
     if (ms.radarKey !== this.cache.radarKey) {
       this.cache.radarKey = ms.radarKey;
