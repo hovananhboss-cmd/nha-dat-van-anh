@@ -138,9 +138,6 @@ details.sub > * + * { margin-top: 8px; }
 
 /* Nhập toạ độ VN-2000 */
 details.vn2000 { border-style: solid; border-color: #f59e0b55; background: color-mix(in srgb, #f59e0b 6%, transparent); }
-.ocr-box { border: 1.5px dashed #0f766e66; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.ocr-btn { background: #d97706; color: #fff; border-color: #d97706; font-size: 15px; padding: 12px; }
-.ocr-btn:hover { filter: brightness(1.08); }
 .lbl { font-weight: 700; font-size: 14px; display: block; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .corner-preview:empty { display: none; }

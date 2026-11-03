@@ -25,6 +25,14 @@ export const CATS = {
   worship:    { label: 'Chùa - Nhà thờ',        icon: '🛕', color: '#ca8a04' },
   fuel:       { label: 'Cây xăng',              icon: '⛽', color: '#64748b' },
   industrial: { label: 'Khu công nghiệp',       icon: '🏭', color: '#475569' },
+  pharmacy:   { label: 'Nhà thuốc',             icon: '💊', color: '#10b981' },
+  sports:     { label: 'Thể thao - Gym',        icon: '🏟️', color: '#0ea5e9' },
+  entertain:  { label: 'Rạp phim - Giải trí',   icon: '🎬', color: '#d946ef' },
+  police:     { label: 'Công an',               icon: '🚓', color: '#1d4ed8' },
+  post:       { label: 'Bưu điện',              icon: '📮', color: '#f59e0b' },
+  convenience:{ label: 'Cửa hàng tiện lợi',     icon: '🏪', color: '#22c55e' },
+  food:       { label: 'Cà phê - Nhà hàng',     icon: '☕', color: '#a16207' },
+  hotel:      { label: 'Khách sạn',             icon: '🏨', color: '#7c3aed' },
   custom:     { label: 'Điểm khác',             icon: '📍', color: '#e11d48' },
 };
 
@@ -45,6 +53,14 @@ export function categorize(t) {
   if (a === 'place_of_worship') return 'worship';
   if (a === 'fuel') return 'fuel';
   if (t.landuse === 'industrial') return 'industrial';
+  if (a === 'pharmacy' || s === 'chemist') return 'pharmacy';
+  if (['sports_centre', 'fitness_centre', 'stadium', 'swimming_pool'].includes(t.leisure)) return 'sports';
+  if (a === 'cinema' || a === 'theatre' || t.leisure === 'water_park') return 'entertain';
+  if (a === 'police') return 'police';
+  if (a === 'post_office') return 'post';
+  if (s === 'convenience') return 'convenience';
+  if (a === 'cafe' || a === 'restaurant') return 'food';
+  if (t.tourism === 'hotel') return 'hotel';
   return null;
 }
 
@@ -87,11 +103,19 @@ const PHOTON_GROUPS = [
   ['amenity:place_of_worship'],
   ['amenity:fuel'],
   ['landuse:industrial'],
+  ['amenity:pharmacy', 'shop:chemist'],
+  ['leisure:sports_centre', 'leisure:fitness_centre', 'leisure:stadium', 'leisure:swimming_pool'],
+  ['amenity:cinema', 'amenity:theatre', 'leisure:water_park'],
+  ['amenity:police'],
+  ['amenity:post_office'],
+  ['shop:convenience'],
+  ['amenity:cafe', 'amenity:restaurant'],
+  ['tourism:hotel'],
 ];
 
 async function photonGroup(center, radius, tags) {
   const qs = tags.map((t) => 'osm_tag=' + encodeURIComponent(t)).join('&');
-  const url = `https://photon.komoot.io/reverse?lat=${center[1]}&lon=${center[0]}&radius=${(radius / 1000).toFixed(1)}&limit=30&lang=default&${qs}`;
+  const url = `https://photon.komoot.io/reverse?lat=${center[1]}&lon=${center[0]}&radius=${(radius / 1000).toFixed(1)}&limit=50&lang=default&${qs}`;
   for (let attempt = 0; attempt < 2; attempt++) {
     const t = withTimeout(8000);
     try {

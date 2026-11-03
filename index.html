@@ -68,12 +68,7 @@
 
         <details class="sub vn2000" id="vnBox">
           <summary>📜 Nhập toạ độ từ sổ đỏ (VN-2000)</summary>
-          <div class="ocr-box">
-            <label class="btn ocr-btn">📷 Chụp ảnh bảng toạ độ – tự đọc số<input type="file" id="fileOcr" accept="image/*" hidden></label>
-            <p class="hint">Chụp thẳng, đủ sáng, sát <b>bảng toạ độ</b> trên trang sơ đồ thửa. Ảnh được đọc ngay trên máy của bạn, không gửi đi đâu và không lưu lại. Có thể che tên chủ trước khi chụp.</p>
-            <p class="hint" id="ocrStatus"></p>
-          </div>
-          <p class="hint">Hoặc tự chép bảng toạ độ các điểm góc (cột X, Y), mỗi dòng một điểm, theo thứ tự đi vòng quanh lô. Dán cả số thứ tự điểm cũng được.</p>
+          <p class="hint">Chép bảng toạ độ các điểm góc trên sơ đồ thửa (cột X, Y), mỗi dòng một điểm, theo thứ tự đi vòng quanh lô. Dán cả số thứ tự điểm cũng được; điểm cuối trùng điểm đầu sẽ tự bỏ.</p>
           <label class="lbl">Bảng toạ độ</label>
           <textarea id="inCorners" rows="6" class="mono" placeholder="1   1180081,47   591372,13&#10;2   1180081,47   591377,13&#10;3   1180101,47   591377,13&#10;4   1180101,47   591372,13"></textarea>
           <label class="lbl">Kinh tuyến trục <span class="hint">(in trên sơ đồ thửa, VD: KTT 105°45')</span></label>
@@ -84,7 +79,7 @@
             <button id="btnCorners" class="primary" disabled>Dùng làm lô đất</button>
           </div>
           <div id="cornerPreview" class="corner-preview"></div>
-          <p class="hint">Sai số khoảng 1 m, chỉ dùng để vẽ lô đất trong video, không thay cho trích lục bản đồ địa chính. Toạ độ chỉ dùng trên máy của bạn, app không lưu tên chủ hay số sổ. Bộ đọc ảnh có thể đọc nhầm chữ số, nên luôn so lại với sổ trước khi dùng.</p>
+          <p class="hint">Sai số khoảng 1 m, chỉ dùng để vẽ lô đất trong video, không thay cho trích lục bản đồ địa chính. Toạ độ chỉ dùng trên máy của bạn, app không lưu tên chủ hay số sổ. Luôn so diện tích đọc được với diện tích trên sổ.</p>
         </details>
       </div>
     </details>
@@ -159,7 +154,7 @@
           <select id="o_mode"><option value="flyover">Bay theo đường đi (từng điểm)</option><option value="radar">Quét radar (nhanh)</option></select>
         </label>
         <label>Flycam quanh vị trí
-          <select id="o_orbit"><option value="360">Bay 1 vòng 360°</option><option value="180" selected>Bay nửa vòng 180°</option><option value="90">Lượn nhẹ 90°</option><option value="0">Không xoay</option></select>
+          <select id="o_orbit"><option value="360" selected>Bay 1 vòng 360° (khuyên dùng)</option><option value="0">Không xoay</option></select>
         </label>
         <label>Tốc độ video
           <select id="o_pace"><option value="0.8">Nhanh</option><option value="1" selected>Vừa</option><option value="1.25">Chậm</option></select>

@@ -122,8 +122,8 @@ export function buildTimeline(S) {
   // Flycam: lô đất nằm chính giữa màn hình (chừa chỗ cho thẻ thông tin khi tắt Video sạch)
   const plotPad = S.opts.clean ? { ...NOPAD } : { top: 0, bottom: chh * (landscape ? 0 : 0.26), left: 0, right: landscape ? cw * 0.45 : 0 };
   const zPlot = plot ? Math.min(pc.zoom - 1.0, 17.9) : 16.7;
-  const camPlot = { center: plotC, zoom: zPlot, pitch: 60, bearing: -25, pad: plotPad };
-  const camStart = { center: plotC, zoom: Math.max(10, zPlot - 5.5), pitch: 0, bearing: -100, pad: plotPad };
+  const camPlot = { center: plotC, zoom: zPlot, pitch: 55, bearing: 0, pad: plotPad };
+  const camStart = { center: plotC, zoom: Math.max(10, zPlot - 5.5), pitch: 0, bearing: 0, pad: plotPad };
 
   // ===== Flycam dẫn đường: camera bám theo đầu đường đang vẽ =====
   const CHASE_PAD = { top: chh * 0.32, bottom: 0, left: 0, right: 0 }; // đầu đường hơi thấp để thấy phía trước
@@ -167,7 +167,9 @@ export function buildTimeline(S) {
       const v = k >= N ? sm[N] : sm[k] + (sm[k + 1] - sm[k]) * t;
       return b0 + (v - base) * 0.6;
     };
-    return { len, zc, cam: (f) => ({ center: pointAt(coords, f), zoom: zc, pitch: 58, bearing: bearingAt(f), pad: CHASE_PAD }) };
+    // Giữ hướng Bắc cố định (kiểu Vị Trí Studio): camera chỉ lia theo đầu đường, không xoay
+    void bearingAt;
+    return { len, zc, cam: (f) => ({ center: pointAt(coords, f), zoom: zc, pitch: 45, bearing: 0, pad: NOPAD }) };
   }
   // Ghép 3 pha: tiếp cận → bám theo đầu đường → lùi ra toàn cảnh đường vừa vẽ
   function chaseCamFn(ch, a0, a1) {
@@ -227,7 +229,7 @@ export function buildTimeline(S) {
   // 1b. Giữ khung nhìn thẳng xuống: lô đất phát sáng + hiện diện tích lớn
   if (hasLot) {
     add({
-      name: 'zoomlot', dur: lotRows.length ? 5.6 : 2.8, to: { ...camTop, zoom: camTop.zoom + 0.15, bearing: camTop.bearing + 8 },
+      name: 'zoomlot', dur: lotRows.length ? 5.6 : 2.8, to: { ...camTop, zoom: camTop.zoom + 0.15 },
       cam(p) { return lerpCam(this.from, this.to, ease.inOut(p)); },
       ms(p, lt) { return { plot: 1, glow: 0.65 + 0.35 * Math.sin(lt * 5), plot3d: 0, roads: 0 }; },
       draw(ctx, p, lt, E) {
@@ -246,9 +248,9 @@ export function buildTimeline(S) {
   }
 
   // 2. Flycam bay vòng quanh vị trí + thông tin
-  const orbit = S.opts.orbit ?? 360;
+  const orbit = (S.opts.orbit ?? 360) >= 180 ? 360 : 0; // 1 vòng trọn -> kết thúc đúng hướng Bắc
   const orbitDur = orbit >= 360 ? 9 : orbit >= 180 ? 6.8 : orbit >= 90 ? 5.4 : 4.8;
-  const camOrbit = { ...camPlot, bearing: camPlot.bearing + (orbit || 38) };
+  const camOrbit = { ...camPlot, bearing: camPlot.bearing + orbit };
   const cardAt = orbit >= 180 ? 0.3 : 0.08; // để người xem thấy flycam trước khi hiện thẻ thông tin
   add({
     name: 'plot', dur: orbitDur + (roadsSel.length ? 0.8 : 0), to: camOrbit,
@@ -258,7 +260,7 @@ export function buildTimeline(S) {
         center: plotC,
         zoom: zPlot + 0.45 * Math.sin(Math.PI * p),
         pitch: 60 + 4 * Math.sin(Math.PI * p),
-        bearing: camPlot.bearing + (orbit || 38) * k,
+        bearing: camPlot.bearing + orbit * k,
         pad: plotPad,
       };
       // 25% đầu: nghiêng dần camera từ khung nhìn thẳng sang quỹ đạo flycam
@@ -287,9 +289,8 @@ export function buildTimeline(S) {
     const coords = cn.coords.length >= 2 ? cn.coords : [center, cn.point];
     const ctxPts = rd.lines.flat().filter((q) => haversine(q, cn.point) < 450);
     const ch = chase(coords, cam.bearing || 0);
-    const endB = ch.cam(1).bearing;
-    const fr = fit(coords.concat(ctxPts, [center]), L.fitPad, 18.2, endB);
-    const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 42, bearing: endB, pad: NOPAD };
+    const fr = fit(coords.concat(ctxPts, [center]), L.fitPad, 18.2);
+    const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 40, bearing: 0, pad: NOPAD };
     const sub = cn.distance < 25 ? 'Ngay mặt tiền đường' : routeSub(cn.distance, cn.road);
     add({
       name: 'road', dur: 4, to,
@@ -362,9 +363,8 @@ export function buildTimeline(S) {
     pois.forEach((poi, i) => {
       const coords = poi.route ? poi.route.coords : [center, poi.lngLat];
       const ch = chase(coords, cam.bearing || 0);
-      const endB = ch.cam(1).bearing;
-      const fp = fit(coords.concat([center, poi.lngLat]), L.fitPad, 17.6, endB);
-      const to = { ...fp, zoom: fp.zoom - 0.15, pitch: 40, bearing: endB, pad: NOPAD };
+      const fp = fit(coords.concat([center, poi.lngLat]), L.fitPad, 17.6);
+      const to = { ...fp, zoom: fp.zoom - 0.15, pitch: 40, bearing: 0, pad: NOPAD };
       const color = CATS[poi.cat].color;
       const prev = doneRoutes.slice();
       add({
@@ -397,8 +397,8 @@ export function buildTimeline(S) {
   if (pois.length) {
     const all = pois.map((x) => x.lngLat).concat([center]);
     const fo = fit(all, L.fitPad, 17);
-    const to = { ...fo, zoom: fo.zoom - 0.1, pitch: 32, bearing: cam.bearing || 0 };
-    const to2 = { ...to, bearing: to.bearing + 14 };
+    const to = { ...fo, zoom: fo.zoom - 0.1, pitch: 32, bearing: 0 };
+    const to2 = { ...to, zoom: to.zoom + 0.15 };
     const routesFC = { type: 'FeatureCollection', features: doneRoutes.map((r) => lineF(r.coords, r.color, false)) };
     add({
       name: 'overview', dur: 4.6, to: to2,
@@ -423,9 +423,8 @@ export function buildTimeline(S) {
     lms.forEach((l, i) => {
       const coords = lcoords[i];
       const ch = chase(coords, cam.bearing || 0);
-      const endB = ch.cam(1).bearing;
-      const fr = fit(coords.concat([center]), L.fitPad, 16, endB);
-      const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 35, bearing: endB, pad: NOPAD };
+      const fr = fit(coords.concat([center]), L.fitPad, 16);
+      const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 35, bearing: 0, pad: NOPAD };
       add({
         name: 'region', dur: 3.6 + clamp(ch.len / 12000, 0.6, 2.4), to,
         cam: chaseCamFn(ch, 0.24, 0.72),
@@ -449,7 +448,7 @@ export function buildTimeline(S) {
     lms.forEach((l, i) => { all.push(l.lngLat); all.push(...lcoords[i].filter((_, k) => k % 8 === 0)); });
     const fa = fit(all, L.fitPad, 15);
     const to = { ...fa, zoom: fa.zoom - 0.15, pitch: 30, bearing: 0, pad: NOPAD };
-    const to2 = { ...to, zoom: to.zoom + 0.12, bearing: 10 };
+    const to2 = { ...to, zoom: to.zoom + 0.12 };
     const allRoutes = { type: 'FeatureCollection', features: lms.map((l, i) => lineF(lcoords[i], l.color, false)) };
     add({
       name: 'region-all', dur: 3.6, to: to2,
@@ -549,7 +548,7 @@ export function buildTimeline(S) {
   });
 
   // 7. Kết – liên hệ
-  const camEnd = { ...camPlot, zoom: camPlot.zoom - 1.3, pitch: 45, bearing: cam.bearing + 70, pad: NOPAD };
+  const camEnd = { ...camPlot, zoom: camPlot.zoom - 1.3, pitch: 45, bearing: 0, pad: NOPAD };
   add({
     name: 'outro', dur: 4.6, to: camEnd,
     cam(p) { return lerpCam(this.from, this.to, ease.inOut(p), arcFor(this.from, this.to, cw) * 0.4); },
