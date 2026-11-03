@@ -1,5 +1,5 @@
 import { parseLatLng, isShortGoogleLink, parseCorners, PROVINCES, polygonArea, fmtArea, fmtDist, circlePolygon, centroid, haversine } from './geo.js';
-import { CATS, fetchSurroundings, fetchRoute, fetchIsochrones, geocode } from './data.js';
+import { CATS, fetchSurroundings, fetchRoute, fetchIsochrones, geocode, unshortenMapsLink } from './data.js';
 import { Stage, MAP_STYLES, styleFor } from './stage.js';
 import { buildTimeline, poiSub } from './scenes.js';
 import { exportVideo, mixAudio, canExport } from './exporter.js';
@@ -666,12 +666,32 @@ function fillSelects() {
 }
 
 function bind() {
-  $('btnLocate').onclick = () => {
-    const t = $('inLink').value;
-    const ll = parseLatLng(t);
+  $('btnLocate').onclick = async () => {
+    const raw = $('inLink').value;
+    // Lấy riêng đường link nếu người dùng dán cả đoạn chia sẻ ("Tên địa điểm https://maps.app.goo.gl/...")
+    const urlMatch = raw.match(/https?:\/\/\S+/);
+    const t = urlMatch ? urlMatch[0] : raw;
+    const ll = parseLatLng(raw);
     if (ll) { setCenter(ll); toast('Đã định vị. Kéo ghim 📍 để chỉnh chính xác nếu cần.'); return; }
-    if (isShortGoogleLink(t)) toast('Link rút gọn không đọc được toạ độ. Hãy mở link trên trình duyệt, đợi bản đồ hiện rồi copy lại địa chỉ đầy đủ trên thanh địa chỉ (có dạng .../@10.77,106.70...).', true, 9000);
-    else toast('Không tìm thấy toạ độ trong nội dung đã dán.', true);
+    if (isShortGoogleLink(t)) {
+      const btn = $('btnLocate');
+      btn.disabled = true;
+      btn.textContent = '⏳ Đang đọc…';
+      try {
+        const r = await unshortenMapsLink(t.replace(/[)\].,;]+$/, ''), parseLatLng);
+        if (r) {
+          setCenter(r);
+          toast('Đã đọc link rút gọn và định vị. Kéo ghim 📍 để chỉnh chính xác nếu cần.');
+        } else {
+          toast('Chưa đọc được link rút gọn này. Cách chắc chắn nhất: trong Google Maps, nhấn giữ đúng vị trí để thả ghim đỏ → dãy số toạ độ hiện ở ô tìm kiếm → chạm để sao chép → dán vào đây.', true, 12000);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Định vị';
+      }
+      return;
+    }
+    toast('Không tìm thấy toạ độ trong nội dung đã dán.', true);
   };
   $('btnSearch').onclick = async () => {
     const q = $('inSearch').value.trim();

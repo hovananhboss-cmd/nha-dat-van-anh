@@ -163,6 +163,65 @@ export async function fetchIsochrones(center, minutes = [5, 10, 15], costing = '
   return (j.features || []).map((f) => ({ minutes: f.properties.contour, geometry: f.geometry }));
 }
 
+// Giải link rút gọn Google Maps (maps.app.goo.gl) qua các proxy CORS miễn phí.
+// Trình duyệt không đọc được chuyển hướng sang domain khác, nên phải nhờ máy trung gian.
+const UNSHORTEN_PROXIES = [
+  { url: (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, json: (j) => [j.status && j.status.url, j.contents] },
+  { url: (u) => `https://everyorigin.jwvbremen.nl/api/get?url=${encodeURIComponent(u)}`, json: (j) => [j.status && j.status.url, j.html || j.contents] },
+  { url: (u) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}` },
+  { url: (u) => `https://api.cors.lol/?url=${encodeURIComponent(u)}` },
+  { url: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+];
+
+export function extractCoordsText(text) {
+  // Trả về đoạn văn bản chứa toạ độ trong trang Google Maps (meta ảnh tĩnh, link @lat,lng, !3d!4d…)
+  if (!text) return '';
+  const t = String(text)
+    .replace(/&amp;/g, '&').replace(/\\u0026/g, '&').replace(/\\u003d/g, '=')
+    .replace(/%21/gi, '!').replace(/%40/g, '@').replace(/%2C/gi, ',');
+  const pats = [
+    /!3d-?\d+\.\d+!4d-?\d+\.\d+/,
+    /@-?\d+\.\d+,-?\d+\.\d+/,
+    /(?:center|markers|ll|q)=(?:[^&"']*?%7C)?-?\d+\.\d+(?:%2C|,)\s*-?\d+\.\d+/i,
+  ];
+  for (const re of pats) {
+    const m = t.match(re);
+    if (m) return m[0].replace(/^markers=/i, 'q=').replace(/%7C/gi, '').replace(/%2C/gi, ',');
+  }
+  return '';
+}
+
+export async function unshortenMapsLink(shortUrl, parse) {
+  const errors = [];
+  for (const p of UNSHORTEN_PROXIES) {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 12000);
+      const res = await fetch(p.url(shortUrl), { signal: ctl.signal });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      let candidates;
+      if (p.json) candidates = p.json(await res.json());
+      else candidates = [res.url, await res.text()];
+      for (const c of candidates) {
+        if (!c) continue;
+        // URL ngắn: đọc trực tiếp. Trang HTML dài: chỉ đọc đoạn có dấu hiệu toạ độ để tránh bắt nhầm số.
+        if (c.length < 3000) {
+          const direct = parse(c);
+          if (direct) return direct;
+        }
+        const frag = extractCoordsText(c);
+        const ll = frag && parse(frag);
+        if (ll) return ll;
+      }
+      errors.push('không thấy toạ độ');
+    } catch (e) {
+      errors.push(e.message || String(e));
+    }
+  }
+  return null;
+}
+
 export async function geocode(q) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=vn&accept-language=vi&q=${encodeURIComponent(q)}`;
   const res = await fetch(url);
