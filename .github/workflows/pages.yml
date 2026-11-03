@@ -23,11 +23,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - name: Gom các file của trang web
+      - name: Gom các file của trang web (gắn mã phiên bản để điện thoại luôn tải bản mới)
         run: |
           mkdir -p _site
           cp -r index.html css js _site/
           touch _site/.nojekyll
+          V="${GITHUB_SHA::7}"
+          # Mọi import giữa các file JS đều gắn ?v=… để Safari/Chrome không dùng lại bản cũ trong bộ nhớ đệm
+          sed -i -E "s#from '\./([A-Za-z0-9_-]+)\.js'#from './\1.js?v=$V'#g" _site/js/*.js
+          sed -i -E "s#(src|href)=\"(js/app\.js|css/app\.css)\"#\1=\"\2?v=$V\"#g" _site/index.html
+          sed -i "s#__APP_VERSION__#$V#g" _site/index.html
+          grep -c "?v=$V" _site/index.html _site/js/*.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

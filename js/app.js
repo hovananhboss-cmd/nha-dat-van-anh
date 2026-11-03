@@ -317,7 +317,7 @@ async function scan() {
   btn.textContent = '⏳ Đang quét… (tối đa ~30 giây)';
   try {
     const radius = +val('selRadius');
-    const res = await fetchSurroundings(origin(), radius, Math.min(2000, Math.max(1000, radius / 2)));
+    const res = await fetchSurroundings(origin(), radius, Math.min(2000, Math.max(1000, radius / 2)), (m) => (btn.textContent = '⏳ ' + m));
     const keep = new Set(state.selected);
     state.pois = res.pois.slice(0, 600);
     state.roads = res.roads;
@@ -326,7 +326,7 @@ async function scan() {
     if (!keep.size || !state.selected.length) autoPick();
     renderPoiList(); renderRoads(); refreshEditor();
     if (!res.pois.length) toast('Không tìm thấy tiện ích nào trong bán kính này. Thử tăng bán kính, hoặc thêm bằng tay (➕ Thêm tiện ích).', true, 7000);
-    else toast(`Tìm thấy ${res.pois.length} tiện ích và ${res.roads.length} tuyến đường (nguồn: ${res.sources.join(' + ')}). Đã gợi ý sẵn – bạn chỉnh lại tuỳ ý.`, false, 6000);
+    else toast(`Tìm thấy ${res.pois.length} tiện ích và ${res.roads.length} tuyến đường trong ${res.seconds.toFixed(1).replace('.', ',')} giây (nguồn: ${res.sources.join(' + ')}). Đã gợi ý sẵn – bạn chỉnh lại tuỳ ý.`, false, 6000);
     markDirty(); save();
   } catch (e) {
     toast(e.message || String(e), true, 6000);
