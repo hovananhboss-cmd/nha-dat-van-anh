@@ -1,4 +1,4 @@
-import { CUSTOM_STYLES } from './mapstyles.js';
+import { CUSTOM_STYLES, ARTISTIC_THEMES } from './mapstyles.js';
 // Bản đồ "sân khấu" dùng để xem trước và xuất video (không tương tác)
 const OFM = 'https://tiles.openfreemap.org/styles/';
 
@@ -10,6 +10,10 @@ export const MAP_STYLES = {
   liberty: { label: 'Đường phố cổ điển', url: OFM + 'liberty', credit: '© OpenStreetMap · OpenFreeMap' },
   positron: { label: 'Tối giản xám', url: OFM + 'positron', credit: '© OpenStreetMap · OpenFreeMap' },
 };
+// 32 theme nghệ thuật (bảng màu từ MapToPoster JS, MIT)
+for (const [k, t] of Object.entries(ARTISTIC_THEMES)) {
+  MAP_STYLES['art_' + k] = { label: '🎨 ' + t.name, custom: 'art_' + k, group: 'art', credit: '© OpenStreetMap · OpenFreeMap' };
+}
 
 export function styleFor(id) {
   const s = MAP_STYLES[id] || MAP_STYLES.night;

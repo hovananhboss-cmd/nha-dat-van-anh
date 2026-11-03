@@ -774,7 +774,10 @@ function fillSelects() {
   for (const [name, lon] of PROVINCES) og.appendChild(new Option(`${name} – KTT ${fmtMeridian(lon)}`, String(lon)));
   ps.appendChild(og);
   ps.value = 'auto';
-  for (const [k, s] of Object.entries(MAP_STYLES)) $('o_style').add(new Option(s.label, k));
+  const og1 = document.createElement('optgroup'); og1.label = 'Mẫu chính';
+  const og2 = document.createElement('optgroup'); og2.label = 'Theme nghệ thuật (32 mẫu)';
+  for (const [k, s] of Object.entries(MAP_STYLES)) (s.group === 'art' ? og2 : og1).appendChild(new Option(s.label, k));
+  $('o_style').append(og1, og2);
   for (const [k, l] of Object.entries(TONES)) $('selTone').add(new Option(l, k));
   for (const [k, c] of Object.entries(CATS)) $('poiCatFilter').add(new Option(`${c.icon} ${c.label}`, k));
 }

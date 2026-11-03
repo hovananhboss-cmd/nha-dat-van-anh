@@ -1,4 +1,5 @@
 // Các mẫu bản đồ tự thiết kế cho video BĐS – dựng trên dữ liệu OpenStreetMap miễn phí của OpenFreeMap
+import { ARTISTIC_THEMES } from './themes-artistic.js';
 const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 const OMT = { type: 'vector', url: 'https://tiles.openfreemap.org/planet' };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -50,10 +51,10 @@ function baseLayers(T, { buildings = true } = {}) {
   L.push({ id: 'road-minor-case', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: minor, minzoom: 13, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.minorCase, 'line-width': z(13, 1.5, 16, 7, 19, 26) } });
   L.push({ id: 'road-minor', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: minor, minzoom: 13, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.minor, 'line-width': z(13, 0.8, 16, 5, 19, 22) } });
   L.push({ id: 'road-mid-case', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: mid, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.midCase, 'line-width': z(10, 1, 15, 6, 19, 30) } });
-  L.push({ id: 'road-mid', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: mid, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.secondary, 'line-width': z(10, 0.5, 15, 4.5, 19, 26) } });
+  L.push({ id: 'road-mid', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: mid, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['match', ['get', 'class'], 'tertiary', T.tertiary || T.secondary, T.secondary], 'line-width': z(10, 0.5, 15, 4.5, 19, 26) } });
   L.push({ id: 'road-major-glow', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: top, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.majorGlow, 'line-width': z(9, 3, 15, 16, 19, 56), 'line-blur': z(9, 3, 15, 9, 19, 28), 'line-opacity': 0.35 } });
   L.push({ id: 'road-major-case', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: top, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.majorCase, 'line-width': z(9, 1.5, 15, 8.5, 19, 36) } });
-  L.push({ id: 'road-major', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: top, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': T.major, 'line-width': z(9, 1, 15, 6.5, 19, 32) } });
+  L.push({ id: 'road-major', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: top, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['match', ['get', 'class'], 'motorway', T.motorway || T.major, T.major], 'line-width': z(9, 1, 15, 6.5, 19, 32) } });
   L.push({ id: 'rail', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: cls('rail', 'transit'), paint: { 'line-color': T.rail, 'line-width': 1.5, 'line-dasharray': [3, 2] } });
   return L;
 }
@@ -82,8 +83,27 @@ function labelLayers(T, { roadSize = 1 } = {}) {
   ];
 }
 
+// ---- Chuyển bảng màu MapToPoster thành bảng màu của bộ dựng ----
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function mix(a, b, t) {
+  const A = hexToRgb(a), B = hexToRgb(b);
+  return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+const lum = (h) => { const [r, g, b] = hexToRgb(h); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
+
+function paletteTheme(P) {
+  const dark = lum(P.bg) < 0.5;
+  return {
+    bg: P.bg, residential: mix(P.bg, P.text, 0.03), park: P.parks, wood: P.parks, water: P.water, waterLine: P.water,
+    building: mix(P.bg, P.text, dark ? 0.12 : 0.08), buildingTop: mix(P.bg, P.text, dark ? 0.2 : 0.14), buildingOpacity: 0.9,
+    minor: P.road_residential, minorCase: P.bg, major: P.road_primary, majorGlow: P.road_primary, majorCase: P.bg,
+    secondary: P.road_secondary, tertiary: P.road_tertiary, midCase: P.bg, motorway: P.road_motorway,
+    rail: mix(P.bg, P.text, 0.3), text: P.text, textMajor: P.text, halo: P.bg, place: mix(P.text, P.bg, 0.25), waterText: mix(P.text, P.water, 0.4),
+  };
+}
+
 function vectorStyle(kind) {
-  const T = THEMES[kind];
+  const T = THEMES[kind] || paletteTheme(ARTISTIC_THEMES[kind]);
   return { version: 8, glyphs: GLYPHS, sources: { omt: OMT }, layers: [...baseLayers(T), ...labelLayers(T)] };
 }
 
@@ -110,7 +130,10 @@ function satelliteStyle(withLabels) {
   return style;
 }
 
+export { ARTISTIC_THEMES };
+
 export const CUSTOM_STYLES = {
+  ...Object.fromEntries(Object.keys(ARTISTIC_THEMES).map((k) => ['art_' + k, () => vectorStyle(k)])),
   night: () => vectorStyle('night'),
   day: () => vectorStyle('day'),
   satellite: () => satelliteStyle(true),
