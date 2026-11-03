@@ -1,8 +1,9 @@
 import {
   parseLatLng, isShortGoogleLink, parseCornerRows, vn2000ToWgs84, autoMeridian, parseLon0, fmtMeridian, MERIDIANS,
-  isSelfIntersecting, sortAroundCentroid, edgeLengths, PROVINCES, polygonArea, fmtArea, fmtDist, circlePolygon, centroid, haversine, bboxOf,
+  isSelfIntersecting, sortAroundCentroid, edgeLengths, PROVINCES, polygonArea, fmtArea, fmtDist, circlePolygon, centroid, haversine, bboxOf, nearestOnLine,
 } from './geo.js';
 import { ocrCoordinates } from './ocr.js';
+import { LANDMARKS, INFRA_LIST, infraNearest } from './regional.js';
 import { CATS, fetchSurroundings, fetchRoute, fetchIsochrones, geocode, unshortenMapsLink } from './data.js';
 import { Stage, MAP_STYLES, styleFor } from './stage.js';
 import { buildTimeline, poiSub } from './scenes.js';
@@ -29,6 +30,9 @@ const state = {
   selected: [],
   roads: [],
   roadSel: [],
+  lmSel: LANDMARKS.filter((l) => l.def).map((l) => l.id),
+  lmCustom: [],
+  infraSel: INFRA_LIST.map((x) => x.id),
   iso: null,
   isoKey: '',
   media: [],
@@ -72,7 +76,8 @@ function snapshot() {
   return {
     v: 1,
     center: state.center, plot: state.plot, pois: state.pois.slice(0, 500).map(stripRoute), custom: state.custom.map(stripRoute),
-    selected: state.selected, roads: state.roads, roadSel: state.roadSel, plotAreaExact: state.plotAreaExact || 0, fields: f,
+    selected: state.selected, roads: state.roads.map(({ connector, ...r }) => r), roadSel: state.roadSel, plotAreaExact: state.plotAreaExact || 0,
+    lmSel: state.lmSel, lmCustom: state.lmCustom.map(stripRoute), infraSel: state.infraSel, fields: f,
   };
 }
 function stripRoute(p) { const { route, routeFrom, ...rest } = p; return rest; }
@@ -84,6 +89,7 @@ function restore(data) {
   Object.assign(state, {
     center: data.center || null, plot: data.plot || [], pois: data.pois || [], custom: data.custom || [],
     selected: data.selected || [], roads: data.roads || [], roadSel: data.roadSel || [], plotAreaExact: data.plotAreaExact || 0,
+    lmSel: data.lmSel || state.lmSel, lmCustom: data.lmCustom || [], infraSel: data.infraSel || state.infraSel,
   });
   for (const [id, v] of Object.entries(data.fields || {})) {
     const el = $(id);
@@ -201,6 +207,7 @@ function setCenter(ll, fly = true) {
   state.iso = null;
   refreshEditor();
   renderPoiList();
+  renderRegional();
   markDirty(); save();
 }
 
@@ -290,6 +297,56 @@ function togglePoi(id) {
     state.selected.push(id);
   }
   renderPoiList(); refreshEditor(); markDirty(); save();
+}
+
+const LM_MAX_KM = 80, INFRA_MAX_KM = 40;
+const LM_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#facc15', '#34d399', '#fb923c'];
+const INFRA_COLORS = ['#f97316', '#ef4444', '#e879f9'];
+const allLandmarks = () => LANDMARKS.concat(state.lmCustom);
+
+function renderRegional() {
+  const o = state.center ? origin() : null;
+  const box = $('lmList');
+  box.innerHTML = '';
+  for (const l of allLandmarks()) {
+    const d = o ? haversine(o, l.lngLat) : 0;
+    const far = o && d > LM_MAX_KM * 1000;
+    const on = state.lmSel.includes(l.id);
+    const b = document.createElement('button');
+    b.className = on && !far ? 'on' : '';
+    b.disabled = far;
+    b.textContent = `${on ? '✓' : '+'} ${l.icon} ${l.name}${o ? ' · ' + fmtDist(d) : ''}${l.custom ? ' ✕' : ''}`;
+    b.title = l.custom ? 'Điểm tự thêm – bấm để xoá' : '';
+    b.onclick = () => {
+      const i = state.lmSel.indexOf(l.id);
+      if (i >= 0) {
+        state.lmSel.splice(i, 1);
+        if (l.custom) state.lmCustom = state.lmCustom.filter((x) => x.id !== l.id); // bỏ chọn điểm tự thêm = xoá
+      } else {
+        if (state.lmSel.length >= 6) return toast('Chọn tối đa 6 điểm mốc để video gọn.');
+        state.lmSel.push(l.id);
+      }
+      renderRegional(); markDirty(); save();
+    };
+    box.appendChild(b);
+  }
+  const ib = $('infraList');
+  ib.innerHTML = '';
+  for (const f of INFRA_LIST) {
+    const nr = o ? infraNearest(f.id, o) : null;
+    const far = nr && nr.dist > INFRA_MAX_KM * 1000;
+    const on = state.infraSel.includes(f.id);
+    const b = document.createElement('button');
+    b.className = on && !far ? 'on' : '';
+    b.disabled = far;
+    b.textContent = `${on ? '✓' : '+'} 🚧 ${f.name}${nr ? ' · cách ' + fmtDist(nr.dist) : ''}`;
+    b.onclick = () => {
+      const i = state.infraSel.indexOf(f.id);
+      if (i >= 0) state.infraSel.splice(i, 1); else state.infraSel.push(f.id);
+      renderRegional(); markDirty(); save();
+    };
+    ib.appendChild(b);
+  }
 }
 
 function renderRoads() {
@@ -482,6 +539,38 @@ async function ensureBuilt() {
       }
     }
   }
+  // Đường nối từ lô đất tới điểm gần nhất của các đường chính đã chọn
+  const roadsSel = state.roads.filter((r) => state.roadSel.includes(r.name));
+  for (const r of roadsSel) {
+    let best = null, bd = Infinity;
+    for (const l of r.lines) { const q = nearestOnLine(o, l); const d = haversine(o, q); if (d < bd) { bd = d; best = q; } }
+    if (!best) continue;
+    const key = o.join(',') + '>' + best.join(',');
+    if (!r.connector || r.connector.key !== key) {
+      status(`Đang tính đường nối tới ${r.name}…`);
+      const rt = bd < 25 ? { coords: [o, best], distance: bd, road: true } : await fetchRoute(o, best);
+      r.connector = { ...rt, point: best, key };
+    }
+  }
+  // Điểm mốc kết nối vùng
+  const landmarks = [];
+  for (const l of allLandmarks().filter((x) => state.lmSel.includes(x.id))) {
+    if (haversine(o, l.lngLat) > LM_MAX_KM * 1000) continue;
+    const key = o.join(',');
+    if (!l.route || l.routeFrom !== key) {
+      status(`Đang tính đường tới ${l.name}…`);
+      l.route = await fetchRoute(o, l.lngLat);
+      l.routeFrom = key;
+    }
+    landmarks.push({ ...l, color: LM_COLORS[landmarks.length % LM_COLORS.length] });
+  }
+  // Hạ tầng đang thi công
+  const infra = [];
+  for (const f of INFRA_LIST.filter((x) => state.infraSel.includes(x.id))) {
+    const nr = infraNearest(f.id, o);
+    if (nr.dist > INFRA_MAX_KM * 1000) continue;
+    infra.push({ ...f, nearest: nr, color: INFRA_COLORS[infra.length % INFRA_COLORS.length] });
+  }
   let iso = null;
   if (val('chkIso')) {
     const key = o.join(',') + val('selIsoMode');
@@ -505,7 +594,6 @@ async function ensureBuilt() {
   const plot = state.plot.length >= 3 ? state.plot : null;
   stage.setData('plot', plot ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...plot, plot[0]]] } }] } : null);
   stage.setData('iso', iso ? { type: 'FeatureCollection', features: iso.map((f) => ({ type: 'Feature', properties: { minutes: f.minutes }, geometry: f.geometry })) } : null);
-  const roadsSel = state.roads.filter((r) => state.roadSel.includes(r.name));
   stage.setData('roads', { type: 'FeatureCollection', features: roadsSel.flatMap((r) => r.lines.map((l) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: l } }))) });
   stage.setData('routes', null);
   stage.cache = {};
@@ -519,6 +607,8 @@ async function ensureBuilt() {
     plot,
     pois: sel,
     roads: roadsSel,
+    landmarks,
+    infra,
     iso,
     info: info(),
     media: state.media,
@@ -885,6 +975,31 @@ function bind() {
     }
   };
   $('btnScan').onclick = scan;
+  $('btnLmAdd').onclick = async () => {
+    const q = $('lmSearch').value.trim();
+    if (!q) return;
+    const box = $('lmResults');
+    box.innerHTML = '<p class="hint">Đang tìm…</p>';
+    try {
+      const rs = await geocode(q);
+      box.innerHTML = rs.length ? '' : '<p class="hint">Không thấy kết quả.</p>';
+      for (const r of rs) {
+        const b = document.createElement('button');
+        b.textContent = r.name;
+        b.onclick = () => {
+          const name = r.name.split(',')[0].trim();
+          const l = { id: 'lm/' + Date.now(), name, short: name, icon: '📍', lngLat: r.lngLat, custom: true };
+          state.lmCustom.push(l);
+          if (state.lmSel.length < 6) state.lmSel.push(l.id);
+          box.innerHTML = '';
+          $('lmSearch').value = '';
+          renderRegional(); markDirty(); save();
+        };
+        box.appendChild(b);
+      }
+    } catch (e) { box.innerHTML = `<p class="hint">${e.message}</p>`; }
+  };
+  $('lmSearch').addEventListener('keydown', (e) => e.key === 'Enter' && $('btnLmAdd').click());
   $('btnAutoPick').onclick = () => (state.pois.length ? autoPick() : toast('Hãy bấm “Quét tiện ích” trước.'));
   $('poiFilter').oninput = renderPoiList;
   $('poiCatFilter').onchange = renderPoiList;
@@ -976,7 +1091,7 @@ function afterRestore() {
     editor.jumpTo({ center: state.center, zoom: 16.5 });
   }
   document.documentElement.style.setProperty('--accent', val('o_theme'));
-  refreshEditor(); renderPoiList(); renderRoads(); fitPreview(); markDirty();
+  refreshEditor(); renderPoiList(); renderRoads(); renderRegional(); fitPreview(); markDirty();
 }
 
 async function main() {
