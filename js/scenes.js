@@ -112,7 +112,7 @@ export function buildTimeline(S) {
   const plotCoords = plot || [center];
   const pc = fit(plotCoords, L.plotPad, plot ? 19 : 17.3);
   const plotPad = { top: L.plotPad.top, bottom: L.plotPad.bottom, left: L.plotPad.left, right: L.plotPad.right };
-  const zPlot = plot ? Math.min(pc.zoom - 0.6, 17.9) : 17.2;
+  const zPlot = plot ? Math.min(pc.zoom - 0.5, 18.4) : 17.2;
   const camPlot = { center: plotC, zoom: zPlot, pitch: 60, bearing: -25, pad: plotPad };
   const camStart = { center: plotC, zoom: Math.max(10, zPlot - 5.5), pitch: 0, bearing: -100, pad: plotPad };
 
@@ -127,18 +127,38 @@ export function buildTimeline(S) {
 
   const roadsSel = S.roads || [];
   const info = S.info || {};
+  const clean = !!S.opts.clean; // video sạch: không tiêu đề, giá, liên hệ, phụ đề
+  const areaM2 = S.plotArea || (plot ? polygonArea(plot) : 0);
+  const areaText = areaM2 ? fmtArea(areaM2) : (info.area || '');
 
-  // 1. Mở đầu – bay vào vị trí
+  // Camera nhìn thẳng xuống lô đất (zoom sát để thấy rõ ranh và diện tích)
+  const hasLot = !!(plot || areaText);
+  const fz = plot ? fit(plot, { top: chh * 0.3, bottom: chh * 0.3, left: cw * 0.25, right: cw * 0.25 }, 20) : { zoom: zPlot + 1 };
+  const camTop = { center: plotC, zoom: Math.min(fz.zoom, 20), pitch: 0, bearing: camPlot.bearing, pad: NOPAD };
+
+  // 1. Mở đầu – lao thẳng từ trên cao xuống lô đất
   add({
-    name: 'intro', dur: 3.6, to: camPlot,
+    name: 'intro', dur: 3.6, to: hasLot ? camTop : camPlot,
     cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.95))); },
-    ms(p) { return { plot: seg(p, 0.6, 1), plot3d: ease.out(seg(p, 0.55, 1)), roads: 0 }; },
+    ms(p, lt) { return { plot: seg(p, 0.5, 1), glow: seg(p, 0.5, 1), plot3d: hasLot ? 0 : ease.out(seg(p, 0.55, 1)), roads: 0 }; },
     draw(ctx, p, lt, E) {
-      drawPlotMarker(ctx, E, lt, seg(p, 0.5, 0.8));
-      const a = ease.out(seg(p, 0.1, 0.4));
-      drawTitle(ctx, E, a);
+      if (!plot) drawPlotMarker(ctx, E, lt, seg(p, 0.5, 0.8), clean ? null : 'VỊ TRÍ');
+      if (!clean) drawTitle(ctx, E, ease.out(seg(p, 0.1, 0.4)));
     },
   });
+
+  // 1b. Giữ khung nhìn thẳng xuống: lô đất phát sáng + hiện diện tích lớn
+  if (hasLot) {
+    add({
+      name: 'zoomlot', dur: 2.8, to: { ...camTop, zoom: camTop.zoom + 0.15 },
+      cam(p) { return lerpCam(this.from, this.to, ease.inOut(p)); },
+      ms(p, lt) { return { plot: 1, glow: 0.65 + 0.35 * Math.sin(lt * 5), plot3d: 0, roads: 0 }; },
+      draw(ctx, p, lt, E) {
+        if (!plot) drawPlotMarker(ctx, E, lt, 1, null);
+        drawAreaLabel(ctx, E, ease.back(seg(p, 0.05, 0.3)), true);
+      },
+    });
+  }
 
   // 2. Flycam bay vòng quanh vị trí + thông tin
   const orbit = S.opts.orbit ?? 360;
@@ -149,20 +169,27 @@ export function buildTimeline(S) {
     name: 'plot', dur: orbitDur + (roadsSel.length ? 0.8 : 0), to: camOrbit,
     cam(p) {
       const k = orbit >= 180 ? (1 - Math.cos(Math.PI * p)) / 2 : ease.inOut(p); // xoay đều, mượt hai đầu
-      return {
+      const orb = {
         center: plotC,
         zoom: zPlot + 0.45 * Math.sin(Math.PI * p),
         pitch: 60 + 4 * Math.sin(Math.PI * p),
         bearing: camPlot.bearing + (orbit || 38) * k,
         pad: plotPad,
       };
+      // 25% đầu: nghiêng dần camera từ khung nhìn thẳng sang quỹ đạo flycam
+      const b = ease.inOut(seg(p, 0, 0.25));
+      if (b >= 1) return orb;
+      const c = lerpCam(this.from, orb, b);
+      c.bearing = this.from.bearing + (orb.bearing - this.from.bearing) * b;
+      return c;
     },
-    ms(p, lt) { return { plot: 0.6 + 0.4 * Math.sin(lt * 4), plot3d: 1, roads: roadsSel.length ? ease.out(seg(p, cardAt + 0.1, cardAt + 0.3)) : 0 }; },
+    ms(p, lt) { return { plot: 0.6 + 0.4 * Math.sin(lt * 4), glow: 0.6 + 0.4 * Math.sin(lt * 4), plot3d: ease.inOut(seg(p, 0, 0.25)), roads: roadsSel.length ? ease.out(seg(p, cardAt + 0.1, cardAt + 0.3)) : 0 }; },
     draw(ctx, p, lt, E) {
       if (roadsSel.length) drawRoadLabels(ctx, E, ease.out(seg(p, cardAt + 0.15, cardAt + 0.3)));
       if (plot && S.opts.showDims) drawDims(ctx, E, ease.out(seg(p, 0.1, 0.25)));
-      drawPlotMarker(ctx, E, lt, 1);
-      drawInfoCard(ctx, E, ease.out(seg(p, cardAt, cardAt + 0.15)), p > 0.94 ? 1 - seg(p, 0.94, 1) : 1);
+      if (!plot) drawPlotMarker(ctx, E, lt, 1, clean ? null : 'VỊ TRÍ');
+      drawAreaLabel(ctx, E, 1, false);
+      if (!clean) drawInfoCard(ctx, E, ease.out(seg(p, cardAt, cardAt + 0.15)), p > 0.94 ? 1 - seg(p, 0.94, 1) : 1);
     },
   });
 
@@ -256,7 +283,7 @@ export function buildTimeline(S) {
       },
       ms() { return { plot: 1, roads: 0.5, routes: routesFC, routesKey: 'all' }; },
       draw(ctx, p, lt, E) {
-        drawPlotMarker(ctx, E, lt, 1);
+        drawPlotMarker(ctx, E, lt, 1, clean ? null : 'VỊ TRÍ');
         drawPoiLabels(ctx, E, pois.map((x, i) => ({ poi: x, a: ease.out(seg(p, 0.35 + i * 0.03, 0.5 + i * 0.03)) })), true, false);
         drawHeader(ctx, E, 'KẾT NỐI THUẬN TIỆN', `${pois.length} tiện ích quanh khu vực`, ease.out(seg(p, 0.05, 0.25)));
       },
@@ -290,8 +317,8 @@ export function buildTimeline(S) {
         ctx.globalAlpha = fadeIn;
         ctx.fillRect(0, E.H * 0.55, E.W, E.H * 0.45);
         ctx.globalAlpha = 1;
-        pill(ctx, E.W * 0.06, E.H * 0.13, E.u, m.type === 'video' ? '🎬 VIDEO THỰC TẾ' : '📷 HÌNH ẢNH THỰC TẾ', hexA(theme, 0.95), '#fff', 22, 'left');
-        if (info.price) {
+        if (!clean) pill(ctx, E.W * 0.06, E.H * 0.13, E.u, m.type === 'video' ? '🎬 VIDEO THỰC TẾ' : '📷 HÌNH ẢNH THỰC TẾ', hexA(theme, 0.95), '#fff', 22, 'left');
+        if (info.price && !clean) {
           font(ctx, 46 * E.u, 800);
           ctx.textAlign = 'left';
           ctx.textBaseline = 'alphabetic';
@@ -309,10 +336,11 @@ export function buildTimeline(S) {
   add({
     name: 'outro', dur: 4.6, to: camEnd,
     cam(p) { return lerpCam(this.from, this.to, ease.inOut(p), arcFor(this.from, this.to, cw) * 0.4); },
-    ms() { return { plot: 1, roads: 0.4, routesKey: 'all' }; },
+    ms(p, lt) { return { plot: 1, glow: 0.6 + 0.4 * Math.sin(lt * 4), roads: 0.4, routesKey: 'all' }; },
     draw(ctx, p, lt, E) {
       drawPlotMarker(ctx, E, lt, 1, null);
-      drawOutro(ctx, E, ease.out(seg(p, 0.1, 0.35)));
+      if (clean) drawAreaLabel(ctx, E, 1, false);
+      else drawOutro(ctx, E, ease.out(seg(p, 0.1, 0.35)));
     },
   });
 
@@ -350,6 +378,40 @@ export function buildTimeline(S) {
     ctx.save();
     ctx.globalAlpha = a;
     plotMarker(ctx, x, y, E.u, lt, theme, label);
+    ctx.restore();
+  }
+
+  // Nhãn diện tích nổi trên lô đất (phát sáng theo màu chủ đạo)
+  function drawAreaLabel(ctx, E, a, big) {
+    if (a <= 0.01 || !areaText) return;
+    const u = E.u;
+    const [x, y0] = E.project(plot ? centroidOf(plot) : center);
+    let y = y0;
+    if (plot && !big) {
+      // đặt phía trên lô đất
+      const ys = plot.map((q) => E.project(q)[1]);
+      y = Math.min(...ys) - 46 * u;
+    }
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.translate(x, y);
+    ctx.scale(a, a);
+    const size = big ? 58 : 34;
+    font(ctx, size * u, 800);
+    const w = ctx.measureText(areaText).width + 44 * u;
+    const h = (size + 26) * u;
+    shadow(ctx, 30 * u, hexA(theme, 0.9));
+    rrect(ctx, -w / 2, -h / 2, w, h, h / 2);
+    ctx.fillStyle = hexA(theme, 0.92);
+    ctx.fill();
+    noShadow(ctx);
+    ctx.lineWidth = 3 * u;
+    ctx.strokeStyle = 'rgba(255,255,255,.9)';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(areaText, 0, 2 * u);
     ctx.restore();
   }
 
@@ -509,7 +571,7 @@ export function buildTimeline(S) {
   }
 
   function drawHeader(ctx, E, title, sub, a = 1, compact = false) {
-    if (a <= 0) return;
+    if (a <= 0 || clean) return; // video sạch: không tiêu đề chữ
     const u = E.u;
     ctx.save();
     ctx.globalAlpha = a;
@@ -638,7 +700,7 @@ export function buildTimeline(S) {
   function drawGlobal(ctx, E, t, scene) {
     const u = E.u;
     // Thẻ môi giới góc trên
-    if (scene.name !== 'outro' && (info.agent || info.phone)) {
+    if (!clean && scene.name !== 'outro' && (info.agent || info.phone)) {
       ctx.save();
       ctx.globalAlpha = 0.95;
       const txt = [info.agent, info.phone].filter(Boolean).join(' · ');
@@ -649,7 +711,7 @@ export function buildTimeline(S) {
     }
     // Phụ đề
     const sub = subs.find((s) => t >= s.start && t < s.end);
-    if (sub && scene.name !== 'outro') {
+    if (sub && !clean && scene.name !== 'outro') {
       font(ctx, 34 * u, 700);
       const lines = wrap(ctx, sub.text, E.W * 0.86, 3);
       const lh = 46 * u;
