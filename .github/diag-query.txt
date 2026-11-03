@@ -1,0 +1,13 @@
+[out:json][timeout:45];
+(
+ nwr(around:3000,10.7769,106.7009)[amenity~"^(kindergarten|school|university|college|hospital|clinic|marketplace|bank|townhall|bus_station|place_of_worship|fuel)$"][name];
+ nwr(around:3000,10.7769,106.7009)[shop~"^(supermarket|mall|department_store)$"][name];
+ nwr(around:3000,10.7769,106.7009)[leisure=park][name];
+ nwr(around:3000,10.7769,106.7009)[railway=station][name];
+ nwr(around:3000,10.7769,106.7009)[aeroway=aerodrome][name];
+ nwr(around:3000,10.7769,106.7009)[landuse=industrial][name];
+ nwr(around:3000,10.7769,106.7009)[office=government][name];
+);
+out center tags qt;
+way(around:1500,10.7769,106.7009)[highway~"^(motorway|trunk|primary|secondary|tertiary)$"][name];
+out geom tags qt;
