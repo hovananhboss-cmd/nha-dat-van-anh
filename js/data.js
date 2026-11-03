@@ -1,4 +1,4 @@
-// Lấy dữ liệu miễn phí: OpenStreetMap (Overpass), OSRM (đường đi), Valhalla (vùng thời gian), Nominatim (tìm địa chỉ)
+// Lấy dữ liệu miễn phí: OpenStreetMap (Photon + Overpass + ô bản đồ OpenFreeMap), OSRM (đường đi), Valhalla (vùng thời gian), Nominatim (tìm địa chỉ)
 import { haversine, pointToLineDist } from './geo.js';
 
 const OVERPASS = [
@@ -47,32 +47,119 @@ export function categorize(t) {
   return null;
 }
 
-async function overpass(query) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function withTimeout(ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  return { signal: ctl.signal, done: () => clearTimeout(timer) };
+}
+
+const isIndustrialZone = (name) => /khu công nghiệp|cụm công nghiệp|\bkcn\b|\bccn\b|industrial (park|zone|estate)/i.test(name);
+
+function addPoi(list, seen, center, cat, name, lngLat, id) {
+  name = (name || '').trim();
+  if (!cat || !name || !lngLat) return;
+  if (cat === 'industrial' && !isIndustrialZone(name)) return;
+  // Dữ liệu OSM đôi khi gắn nhầm loại (VD: nhà sách gắn là trường học)
+  if ((cat === 'school' || cat === 'kinder') && /nhà sách|cửa hàng|văn phòng phẩm|book ?store|\bshop\b/i.test(name)) return;
+  const key = cat + '|' + name.toLowerCase().normalize('NFC');
+  if (seen.has(key)) return;
+  seen.add(key);
+  list.push({ id, name, cat, lngLat, dist: haversine(center, lngLat) });
+}
+
+// ---- Nguồn 1 (chính): Photon – tìm điểm gần nhất theo từng loại, nhanh & ổn định ----
+const PHOTON_GROUPS = [
+  ['amenity:kindergarten', 'amenity:school'],
+  ['amenity:university', 'amenity:college'],
+  ['amenity:hospital'],
+  ['amenity:clinic'],
+  ['amenity:marketplace'],
+  ['shop:supermarket'],
+  ['shop:mall', 'shop:department_store'],
+  ['amenity:bank'],
+  ['leisure:park'],
+  ['amenity:townhall', 'office:government'],
+  ['amenity:bus_station', 'railway:station', 'aeroway:aerodrome'],
+  ['amenity:place_of_worship'],
+  ['amenity:fuel'],
+  ['landuse:industrial'],
+];
+
+async function photonGroup(center, radius, tags) {
+  const qs = tags.map((t) => 'osm_tag=' + encodeURIComponent(t)).join('&');
+  const url = `https://photon.komoot.io/reverse?lat=${center[1]}&lon=${center[0]}&radius=${(radius / 1000).toFixed(1)}&limit=30&lang=default&${qs}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const t = withTimeout(15000);
+    try {
+      const res = await fetch(url, { signal: t.signal });
+      t.done();
+      if (res.status === 429) { await sleep(1500); continue; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return (await res.json()).features || [];
+    } catch (e) {
+      t.done();
+      if (attempt) throw e;
+      await sleep(800);
+    }
+  }
+  return [];
+}
+
+async function fromPhoton(center, radius) {
+  const pois = [], seen = new Set();
+  let ok = 0;
+  const queue = PHOTON_GROUPS.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const tags = queue.shift();
+      try {
+        const feats = await photonGroup(center, radius, tags);
+        ok++;
+        for (const f of feats) {
+          const p = f.properties || {};
+          const cat = categorize({ [p.osm_key]: p.osm_value });
+          addPoi(pois, seen, center, cat, p.name, f.geometry && f.geometry.coordinates, `photon/${p.osm_type}${p.osm_id}`);
+        }
+      } catch (_) {}
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (!ok) throw new Error('Photon không phản hồi');
+  return pois.filter((p) => p.dist <= radius * 1.05);
+}
+
+// ---- Nguồn 2 (bổ sung, nếu kịp): Overpass – thường quá tải nên chỉ chờ tối đa 25 giây ----
+async function overpass(query, totalMs = 25000) {
+  const deadline = Date.now() + totalMs;
   let lastErr;
   for (const url of OVERPASS) {
+    const left = deadline - Date.now();
+    if (left < 2000) break;
+    const t = withTimeout(left);
     try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 40000);
       const res = await fetch(url, {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: ctl.signal,
+        signal: t.signal,
       });
-      clearTimeout(timer);
+      t.done();
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.json();
     } catch (e) {
+      t.done();
       lastErr = e;
     }
   }
-  throw new Error('Không kết nối được máy chủ OpenStreetMap: ' + (lastErr && lastErr.message));
+  throw new Error('Overpass bận: ' + (lastErr && lastErr.message));
 }
 
-export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500) {
+async function fromOverpass(center, radius, roadRadius) {
   const [lng, lat] = center;
   const A = `(around:${radius},${lat},${lng})`;
-  const q = `[out:json][timeout:45];
+  const q = `[out:json][timeout:20];
 (
  nwr${A}[amenity~"^(kindergarten|school|university|college|hospital|clinic|marketplace|bank|townhall|bus_station|place_of_worship|fuel)$"][name];
  nwr${A}[shop~"^(supermarket|mall|department_store)$"][name];
@@ -86,38 +173,88 @@ out center tags qt;
 way(around:${roadRadius},${lat},${lng})[highway~"^(motorway|trunk|primary|secondary|tertiary)$"][name];
 out geom tags qt;`;
   const json = await overpass(q);
-  const pois = [];
-  const seen = new Set();
+  const pois = [], seen = new Set();
   const roadsByName = new Map();
   for (const el of json.elements || []) {
     const t = el.tags || {};
     if (el.type === 'way' && el.geometry && t.highway) {
-      const coords = el.geometry.map((g) => [g.lon, g.lat]);
-      const name = t['name:vi'] || t.name;
-      const r = roadsByName.get(name) || { name, kind: t.highway, lines: [], dist: Infinity };
-      r.lines.push(coords);
-      r.dist = Math.min(r.dist, pointToLineDist(center, coords));
-      roadsByName.set(name, r);
+      addRoad(roadsByName, center, t['name:vi'] || t.name, t.highway, el.geometry.map((g) => [g.lon, g.lat]));
       continue;
     }
-    const cat = categorize(t);
-    if (!cat) continue;
     const p = el.type === 'node' ? [el.lon, el.lat] : el.center ? [el.center.lon, el.center.lat] : null;
-    if (!p) continue;
-    const name = (t['name:vi'] || t.name || '').trim();
-    if (!name) continue;
-    const key = cat + '|' + name.toLowerCase();
+    addPoi(pois, seen, center, categorize(t), t['name:vi'] || t.name, p, `${el.type}/${el.id}`);
+  }
+  return { pois, roads: roadsByName };
+}
+
+function addRoad(map, center, name, kind, coords) {
+  if (!name || !coords || coords.length < 2) return;
+  const r = map.get(name) || { name, kind, lines: [], dist: Infinity };
+  r.lines.push(coords);
+  r.dist = Math.min(r.dist, pointToLineDist(center, coords));
+  map.set(name, r);
+}
+
+// ---- Đường chính: đọc thẳng từ ô bản đồ nền OpenFreeMap (luôn có, không phụ thuộc Overpass) ----
+async function roadsFromTiles(center, roadRadius) {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;left:-10000px;top:0;width:700px;height:700px;visibility:hidden;';
+  document.body.appendChild(div);
+  const z = roadRadius > 1200 ? 14 : 14.5;
+  const map = new maplibregl.Map({ container: div, style: 'https://tiles.openfreemap.org/styles/liberty', center, zoom: z, interactive: false, attributionControl: false });
+  try {
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 20000);
+      map.once('idle', () => { clearTimeout(timer); resolve(); });
+    });
+    const roads = new Map();
+    const feats = map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation_name' });
+    for (const f of feats) {
+      const cls = f.properties.class;
+      if (!/^(motorway|trunk|primary|secondary|tertiary)$/.test(cls)) continue;
+      const name = f.properties['name:vi'] || f.properties.name || f.properties['name:latin'];
+      const g = f.geometry;
+      const lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+      for (const l of lines) addRoad(roads, center, name, cls, l);
+    }
+    return roads;
+  } finally {
+    map.remove();
+    div.remove();
+  }
+}
+
+export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500, onStatus = () => {}) {
+  onStatus('Đang tìm tiện ích…');
+  const settle = (pr) => pr.then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason }));
+  const opP = settle(fromOverpass(center, radius, roadRadius));
+  const [ph, tiles] = await Promise.all([settle(fromPhoton(center, radius)), settle(roadsFromTiles(center, roadRadius))]);
+  // Overpass hay quá tải: nếu Photon đã có kết quả thì chỉ chờ Overpass thêm tối đa 6 giây
+  const op = ph.status === 'fulfilled'
+    ? await Promise.race([opP, sleep(6000).then(() => ({ status: 'rejected', reason: new Error('Overpass chậm') }))])
+    : await opP;
+  if (ph.status === 'rejected' && op.status === 'rejected') {
+    throw new Error('Máy chủ dữ liệu tiện ích đang bận, vui lòng thử lại sau ít phút. Bạn vẫn có thể thêm tiện ích bằng tay (➕ Thêm tiện ích).');
+  }
+  // Gộp 2 nguồn, bỏ trùng theo tên + loại hoặc 2 điểm cùng loại cách nhau < 60 m
+  const pois = [];
+  const seen = new Set();
+  const all = [...(op.status === 'fulfilled' ? op.value.pois : []), ...(ph.status === 'fulfilled' ? ph.value : [])];
+  for (const p of all) {
+    const key = p.cat + '|' + p.name.toLowerCase().normalize('NFC');
     if (seen.has(key)) continue;
+    if (pois.some((q) => q.cat === p.cat && haversine(q.lngLat, p.lngLat) < 60 && q.name.toLowerCase().includes(p.name.toLowerCase().slice(0, 8)))) continue;
     seen.add(key);
-    pois.push({ id: `${el.type}/${el.id}`, name, cat, lngLat: p, dist: haversine(center, p) });
+    pois.push(p);
   }
   pois.sort((a, b) => a.dist - b.dist);
-  const roads = [...roadsByName.values()].sort((a, b) => a.dist - b.dist).slice(0, 12);
-  return { pois, roads };
+  const roadMap = op.status === 'fulfilled' && op.value.roads.size ? op.value.roads : tiles.status === 'fulfilled' ? tiles.value : new Map();
+  const roads = [...roadMap.values()].filter((r) => r.dist <= roadRadius).sort((a, b) => a.dist - b.dist).slice(0, 12);
+  const sources = [ph.status === 'fulfilled' && 'Photon', op.status === 'fulfilled' && 'Overpass'].filter(Boolean);
+  return { pois, roads, sources };
 }
 
 const routeCache = new Map();
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let lastRouteAt = 0;
 
 export async function fetchRoute(a, b) {
