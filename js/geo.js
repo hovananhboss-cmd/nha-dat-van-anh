@@ -189,30 +189,100 @@ export function vn2000ToWgs84(x, y, lon0) {
   return p(def, 'WGS84', [y, x]); // [lng, lat]
 }
 
-// Mỗi dòng: "lat, lng" (WGS84) hoặc "X Y" (VN-2000). Bỏ qua số thứ tự đầu dòng.
-export function parseCorners(text, lon0) {
-  const pts = [];
-  let mode = null;
+// Các kinh tuyến trục khác nhau đang dùng ở Việt Nam
+export const MERIDIANS = [...new Set(PROVINCES.map((p) => p[1]))].sort((a, b) => a - b);
+
+export function fmtMeridian(lon0) {
+  const d = Math.floor(lon0 + 1e-9);
+  const m = Math.round((lon0 - d) * 60);
+  return `${d}°${String(m).padStart(2, '0')}'`;
+}
+
+// Đọc kinh tuyến trục người dùng gõ: "105°45'", "105 45", "105.75", "105,75", "KTT 105°45′"
+export function parseLon0(text) {
+  const t = String(text || '').trim();
+  let m = t.match(/(\d{3})\s*[°º˚o]?\s*(\d{1,2})\s*['′’]?/);
+  if (m && (t.includes('°') || /\d{3}\s+\d{1,2}\b/.test(t) || /['′’]/.test(t))) return +m[1] + +m[2] / 60;
+  m = t.match(/(\d{3}(?:[.,]\d+)?)/);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  return NaN;
+}
+
+// Tách các số trong một dòng, hiểu cả kiểu Việt Nam "1.180.081,47" và "1180081,47"
+export function extractNumbers(line) {
+  let s = ' ' + line + ' ';
+  // bỏ dấu chấm phân cách hàng nghìn: 1.180.081,47 -> 1180081,47
+  s = s.replace(/(\d{1,3})((?:\.\d{3}){2,})(?=[,\s]|$)/g, (_, a, b) => a + b.replace(/\./g, ''));
+  s = s.replace(/(\d{3})\.(\d{3}),(\d+)/g, '$1$2,$3');
+  const out = [];
+  for (const tok of s.match(/-?\d+(?:[.,]\d+)?/g) || []) out.push(parseFloat(tok.replace(',', '.')));
+  return out;
+}
+
+// Phân tích bảng toạ độ. Trả về danh sách điểm VN-2000 (X,Y) hoặc GPS (lng,lat)
+export function parseCornerRows(text) {
+  const vn = [], gps = [];
   for (const raw of (text || '').split(/\n+/)) {
     const line = raw.trim();
     if (!line) continue;
-    const nums = (line.match(/-?\d+(?:[.,]\d+)?/g) || []).map((s) => {
-      // "1 234 567,89" khó tách – chấp nhận dấu phẩy thập phân khi chỉ có 1 dấu
-      return parseFloat(s.replace(',', '.'));
-    });
-    const big = nums.filter((n) => Math.abs(n) > 1000);
+    const nums = extractNumbers(line);
+    const big = nums.filter((n) => Math.abs(n) > 100000);
     if (big.length >= 2) {
-      // VN-2000: lấy 2 số lớn cuối cùng. Số lớn hơn là X (Bắc).
-      const [a, b] = big.slice(-2);
-      const X = Math.max(a, b), Y = Math.min(a, b);
-      pts.push(vn2000ToWgs84(X, Y, lon0));
-      mode = 'vn2000';
+      // Lấy 2 số lớn đầu tiên trên dòng (cột X, Y). Số lớn hơn là X (hướng Bắc).
+      const [a, b] = big.slice(0, 2);
+      vn.push({ X: Math.max(a, b), Y: Math.min(a, b) });
     } else {
       const ll = parseLatLng(line);
-      if (ll) { pts.push(ll); mode = mode || 'wgs84'; }
+      if (ll) gps.push(ll);
     }
   }
-  return { points: pts, mode };
+  // Bỏ điểm cuối nếu trùng điểm đầu (bảng sổ hay lặp lại điểm 1 để khép kín)
+  const dedupe = (arr, eq) => (arr.length > 3 && eq(arr[0], arr[arr.length - 1]) ? arr.slice(0, -1) : arr);
+  return {
+    vn: dedupe(vn, (p, q) => Math.abs(p.X - q.X) < 0.01 && Math.abs(p.Y - q.Y) < 0.01),
+    gps: dedupe(gps, (p, q) => Math.abs(p[0] - q[0]) < 1e-8 && Math.abs(p[1] - q[1]) < 1e-8),
+  };
+}
+
+// Thử mọi kinh tuyến trục, chọn cái cho kết quả gần vị trí căn nhà nhất
+export function autoMeridian(rows, ref) {
+  let best = null;
+  for (const lon0 of MERIDIANS) {
+    const pts = rows.map((r) => vn2000ToWgs84(r.X, r.Y, lon0));
+    const d = haversine(centroid(pts), ref);
+    if (!best || d < best.dist) best = { lon0, dist: d, points: pts };
+  }
+  return best;
+}
+
+function segIntersect(a, b, c, d) {
+  const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+}
+
+export function isSelfIntersecting(poly) {
+  const n = poly.length;
+  if (n < 4) return false;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (Math.abs(i - j) <= 1 || (i === 0 && j === n - 1)) continue;
+      if (segIntersect(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n])) return true;
+    }
+  }
+  return false;
+}
+
+// Sắp xếp lại các góc theo vòng quanh tâm (dùng khi thứ tự điểm làm ranh bị xoắn)
+export function sortAroundCentroid(poly) {
+  const c = centroid(poly);
+  return poly.slice().sort((p, q) => Math.atan2(p[1] - c[1], p[0] - c[0]) - Math.atan2(q[1] - c[1], q[0] - c[0]));
+}
+
+// Tương thích cũ: mỗi dòng "lat, lng" (WGS84) hoặc "X Y" (VN-2000)
+export function parseCorners(text, lon0) {
+  const { vn, gps } = parseCornerRows(text);
+  if (vn.length) return { points: vn.map((r) => vn2000ToWgs84(r.X, r.Y, lon0)), mode: 'vn2000' };
+  return { points: gps, mode: gps.length ? 'wgs84' : null };
 }
 
 export function fmtDist(m) {

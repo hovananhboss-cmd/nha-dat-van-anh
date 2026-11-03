@@ -30,7 +30,11 @@ Video gồm các cảnh: bay từ trên cao vào vị trí → cận cảnh lô 
 
 - **Lấy toạ độ từ Google Maps**: nhấn giữ vào vị trí → chạm vào dãy số toạ độ để sao chép → dán vào ô ở bước 1.
 - **Link rút gọn `maps.app.goo.gl`**: trình duyệt không đọc được toạ độ trong link này. Hãy mở link, đợi bản đồ hiện ra rồi copy địa chỉ đầy đủ trên thanh địa chỉ.
-- **Toạ độ sổ đỏ (VN-2000)**: mỗi góc 1 dòng `X Y` (có thể kèm số thứ tự). Chọn **tỉnh ghi trên sổ** (tỉnh cũ, trước khi sáp nhập) để lấy đúng kinh tuyến trục. Sau khi vẽ, so diện tích đo được với diện tích trên sổ. Nếu ranh bị lệch vài mét, dùng nút **Dịch ranh**.
+- **Toạ độ sổ đỏ (VN-2000)**: ở bước 1 mở mục “📜 Nhập toạ độ từ sổ đỏ”. Có 2 cách nhập:
+  - **Chụp ảnh bảng toạ độ**: ảnh được đọc ngay trên máy, không gửi đi đâu.
+  - **Gõ hoặc dán tay**: mỗi dòng `STT  X  Y`. Hiểu cả kiểu số `1180081,47` và `1.180.081,47`.
+
+  Để “Tự dò kinh tuyến trục” (nên dùng), hãy định vị căn nhà trước. Hoặc chọn tỉnh, hoặc gõ đúng KTT in trên sơ đồ thửa (VD `105°45'`). Bấm **Đọc toạ độ** để xem bảng cạnh và diện tích (tính trực tiếp từ X, Y, khớp với số trên sổ), rồi bấm **Dùng làm lô đất**. Nếu ranh lệch vài mét so với ảnh vệ tinh, dùng nút **Dịch ranh**.
 - **Thiếu tiện ích**: dữ liệu lấy từ OpenStreetMap nên có thể thiếu một số điểm mới. Chọn **➕ Thêm tiện ích** rồi chạm lên bản đồ để thêm.
 - **Số phút** được ước tính từ quãng đường thực tế chia cho tốc độ ở bước 2 (mặc định 30 km/h).
 - Dự án tự lưu trên trình duyệt. Riêng ảnh, video và âm thanh không lưu được, nên khi mở lại cần tải lên lại.

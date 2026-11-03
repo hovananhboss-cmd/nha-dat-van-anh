@@ -66,18 +66,25 @@
           <span id="plotArea" class="badge"></span>
         </div>
 
-        <details class="sub">
-          <summary>Nhập toạ độ các góc từ sổ đỏ (VN-2000) hoặc GPS</summary>
-          <p class="hint">Mỗi góc 1 dòng. Toạ độ VN-2000 trên sổ: <code>X  Y</code> (VD: <code>1191234.56  602345.67</code>). Toạ độ GPS: <code>10.7769, 106.7009</code>.</p>
-          <textarea id="inCorners" rows="5" placeholder="1  1191234.56  602345.67&#10;2  1191240.10  602360.02&#10;3  ..."></textarea>
-          <div class="row wrap">
-            <label class="inline">Tỉnh (theo sổ):
-              <select id="selProvince"></select>
-            </label>
-            <label class="inline">Kinh tuyến trục: <input id="inLon0" type="number" step="0.25" style="width:90px"></label>
-            <button id="btnCorners" class="primary">Vẽ ranh từ toạ độ</button>
+        <details class="sub vn2000" id="vnBox">
+          <summary>📜 Nhập toạ độ từ sổ đỏ (VN-2000)</summary>
+          <div class="ocr-box">
+            <label class="btn ocr-btn">📷 Chụp ảnh bảng toạ độ – tự đọc số<input type="file" id="fileOcr" accept="image/*" hidden></label>
+            <p class="hint">Chụp thẳng, đủ sáng, sát <b>bảng toạ độ</b> trên trang sơ đồ thửa. Ảnh được đọc ngay trên máy của bạn, không gửi đi đâu và không lưu lại. Có thể che tên chủ trước khi chụp.</p>
+            <p class="hint" id="ocrStatus"></p>
           </div>
-          <p class="hint">Kinh tuyến trục lấy theo tỉnh cũ (trước sáp nhập) ghi trên sổ, theo TT 973/2001. Nếu ranh lệch vài mét, dùng nút “Dịch ranh”.</p>
+          <p class="hint">Hoặc tự chép bảng toạ độ các điểm góc (cột X, Y), mỗi dòng một điểm, theo thứ tự đi vòng quanh lô. Dán cả số thứ tự điểm cũng được.</p>
+          <label class="lbl">Bảng toạ độ</label>
+          <textarea id="inCorners" rows="6" class="mono" placeholder="1   1180081,47   591372,13&#10;2   1180081,47   591377,13&#10;3   1180101,47   591377,13&#10;4   1180101,47   591372,13"></textarea>
+          <label class="lbl">Kinh tuyến trục <span class="hint">(in trên sơ đồ thửa, VD: KTT 105°45')</span></label>
+          <select id="selProvince"></select>
+          <input id="inLon0" placeholder="Gõ kinh tuyến trục, VD: 105°45'" hidden>
+          <div class="row wrap">
+            <button id="btnReadCorners">Đọc toạ độ</button>
+            <button id="btnCorners" class="primary" disabled>Dùng làm lô đất</button>
+          </div>
+          <div id="cornerPreview" class="corner-preview"></div>
+          <p class="hint">Sai số khoảng 1 m, chỉ dùng để vẽ lô đất trong video, không thay cho trích lục bản đồ địa chính. Toạ độ chỉ dùng trên máy của bạn, app không lưu tên chủ hay số sổ. Bộ đọc ảnh có thể đọc nhầm chữ số, nên luôn so lại với sổ trước khi dùng.</p>
         </details>
       </div>
     </details>

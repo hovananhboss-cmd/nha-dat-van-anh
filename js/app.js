@@ -1,4 +1,8 @@
-import { parseLatLng, isShortGoogleLink, parseCorners, PROVINCES, polygonArea, fmtArea, fmtDist, circlePolygon, centroid, haversine } from './geo.js';
+import {
+  parseLatLng, isShortGoogleLink, parseCornerRows, vn2000ToWgs84, autoMeridian, parseLon0, fmtMeridian, MERIDIANS,
+  isSelfIntersecting, sortAroundCentroid, edgeLengths, PROVINCES, polygonArea, fmtArea, fmtDist, circlePolygon, centroid, haversine, bboxOf,
+} from './geo.js';
+import { ocrCoordinates } from './ocr.js';
 import { CATS, fetchSurroundings, fetchRoute, fetchIsochrones, geocode, unshortenMapsLink } from './data.js';
 import { Stage, MAP_STYLES, styleFor } from './stage.js';
 import { buildTimeline, poiSub } from './scenes.js';
@@ -15,7 +19,7 @@ const OUT = {
 const MAX_POI = 10;
 const STORE = 'va-studio-v1';
 const FIELDS = ['f_tag', 'f_price', 'f_title', 'f_address', 'f_area', 'f_size', 'f_rooms', 'f_direction', 'f_legal', 'f_extra', 'f_agent', 'f_phone',
-  'o_aspect', 'o_style', 'o_mode', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0'];
+  'o_aspect', 'o_style', 'o_mode', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
 
 const state = {
   center: null,
@@ -114,9 +118,12 @@ function addEditorLayers() {
   m.addSource('e-plot', { type: 'geojson', data: plotFC() });
   m.addSource('e-corners', { type: 'geojson', data: cornersFC() });
   m.addSource('e-radius', { type: 'geojson', data: radiusFC() });
+  m.addSource('e-preview', { type: 'geojson', data: { type: 'FeatureCollection', features: cornerResult ? [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...cornerResult, cornerResult[0]]] } }] : [] } });
   m.addLayer({ id: 'e-radius', type: 'line', source: 'e-radius', paint: { 'line-color': '#e11d48', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-opacity': 0.7 } });
   m.addLayer({ id: 'e-plot-fill', type: 'fill', source: 'e-plot', paint: { 'fill-color': '#e11d48', 'fill-opacity': 0.3 } });
   m.addLayer({ id: 'e-plot-line', type: 'line', source: 'e-plot', paint: { 'line-color': '#e11d48', 'line-width': 2.5 } });
+  m.addLayer({ id: 'e-preview-fill', type: 'fill', source: 'e-preview', paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.25 } });
+  m.addLayer({ id: 'e-preview-line', type: 'line', source: 'e-preview', paint: { 'line-color': '#d97706', 'line-width': 3, 'line-dasharray': [2, 1.5] } });
   m.addLayer({ id: 'e-corners', type: 'circle', source: 'e-corners', paint: { 'circle-radius': 5, 'circle-color': '#fff', 'circle-stroke-color': '#e11d48', 'circle-stroke-width': 2 } });
 }
 
@@ -654,12 +661,116 @@ function slug(s) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 60) || 'video';
 }
 
+// ---------- toạ độ sổ đỏ VN-2000 ----------
+let cornerResult = null;
+
+function resetCornerPreview() {
+  cornerResult = null;
+  $('btnCorners').disabled = true;
+  $('cornerPreview').innerHTML = '';
+  setPreviewPlot(null);
+}
+
+function setPreviewPlot(points) {
+  const src = editor && editor.getSource('e-preview');
+  if (!src) return;
+  src.setData(points ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...points, points[0]]] } }] } : { type: 'FeatureCollection', features: [] });
+}
+
+function readCorners() {
+  resetCornerPreview();
+  const box = $('cornerPreview');
+  const { vn, gps } = parseCornerRows($('inCorners').value);
+  let points, note = '', sysLabel;
+  if (vn.length >= 3) {
+    sysLabel = 'VN-2000';
+    const sel = $('selProvince').value;
+    if (sel === 'auto') {
+      if (!state.center) {
+        box.innerHTML = '<p class="warn">Chưa biết vị trí căn nhà để tự dò. Hãy định vị ở trên trước (dán link / tìm địa chỉ / chạm bản đồ), hoặc chọn tỉnh ghi trên sổ.</p>';
+        return;
+      }
+      const best = autoMeridian(vn, state.center);
+      points = best.points;
+      const ok = best.dist < 2000;
+      note = `<p class="${ok ? 'ok' : 'warn'}">Tự chọn kinh tuyến trục <b>${fmtMeridian(best.lon0)}</b> · lô đất cách ghim vị trí ${fmtDist(best.dist)}${ok ? '' : ' – khá xa! Kiểm tra lại ghim vị trí, số liệu, hoặc chọn đúng tỉnh trên sổ.'}</p>`;
+    } else {
+      const lon0 = sel === 'manual' ? parseLon0($('inLon0').value) : parseFloat(sel);
+      if (!isFinite(lon0) || lon0 < 100 || lon0 > 112) {
+        box.innerHTML = '<p class="warn">Kinh tuyến trục chưa hợp lệ. VD: 105°45\' hoặc 105.75</p>';
+        return;
+      }
+      if (!MERIDIANS.includes(lon0) && sel === 'manual') note += `<p class="hint">Lưu ý: ${fmtMeridian(lon0)} không nằm trong danh sách kinh tuyến trục các tỉnh – kiểm tra lại.</p>`;
+      points = vn.map((r) => vn2000ToWgs84(r.X, r.Y, lon0));
+      if (state.center) {
+        const d = haversine(centroid(points), state.center);
+        note += `<p class="${d < 2000 ? 'ok' : 'warn'}">KTT ${fmtMeridian(lon0)} · lô đất cách ghim vị trí ${fmtDist(d)}${d < 2000 ? '' : ' – khá xa, kiểm tra lại tỉnh / kinh tuyến trục.'}</p>`;
+      }
+    }
+  } else if (gps.length >= 3) {
+    sysLabel = 'GPS (WGS84)';
+    points = gps;
+  } else {
+    box.innerHTML = `<p class="warn">Cần ít nhất 3 điểm góc (đọc được ${vn.length || gps.length}). Mỗi dòng: số thứ tự (nếu có), X, Y.</p>`;
+    return;
+  }
+  let srcRows = vn.length >= 3 ? vn : null;
+  if (isSelfIntersecting(points)) {
+    const sorted = sortAroundCentroid(points);
+    const idx = sorted.map((p) => points.indexOf(p));
+    points = sorted;
+    if (srcRows) srcRows = idx.map((i) => srcRows[i]);
+    note += '<p class="warn">Thứ tự các điểm làm ranh bị xoắn – đã tự sắp xếp lại theo vòng quanh lô.</p>';
+  }
+  // VN-2000 là hệ phẳng: tính cạnh & diện tích trực tiếp từ X,Y để khớp số trên sổ
+  let lens, area;
+  if (srcRows) {
+    lens = srcRows.map((r, i) => { const q = srcRows[(i + 1) % srcRows.length]; return Math.hypot(q.X - r.X, q.Y - r.Y); });
+    area = Math.abs(srcRows.reduce((a, r, i) => { const q = srcRows[(i + 1) % srcRows.length]; return a + r.X * q.Y - q.X * r.Y; }, 0)) / 2;
+  } else {
+    lens = edgeLengths(points);
+    area = polygonArea(points);
+  }
+  const rows = (srcRows || points).map((r, i) => {
+    const a = srcRows ? `${fmtNum(r.X)}</td><td>${fmtNum(r.Y)}` : `${points[i][1].toFixed(6)}</td><td>${points[i][0].toFixed(6)}`;
+    return `<tr><td>${i + 1}</td><td>${a}</td><td>${(Math.round(lens[i] * 100) / 100).toLocaleString('vi-VN')} m</td></tr>`;
+  }).join('');
+  box.innerHTML = `${note}
+    <p><b>${points.length} điểm · ${sysLabel}</b> · Diện tích: <b>${fmtArea(area)}</b> <span class="hint">(so với diện tích trên sổ)</span></p>
+    <table><thead><tr><th>#</th><th>${srcRows ? 'X' : 'Vĩ độ'}</th><th>${srcRows ? 'Y' : 'Kinh độ'}</th><th>Cạnh tới điểm sau</th></tr></thead><tbody>${rows}</tbody></table>`;
+  cornerResult = points;
+  $('btnCorners').disabled = false;
+  setPreviewPlot(points);
+  const b = bboxOf(points);
+  editor.fitBounds(b, { padding: 70, maxZoom: 19.5, duration: 600 });
+}
+
+function fmtNum(n) {
+  return n.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3, useGrouping: false });
+}
+
+function applyCorners() {
+  if (!cornerResult) return;
+  const points = cornerResult;
+  state.plot = points;
+  const c = centroid(points);
+  if (!state.center || haversine(state.center, c) > 30) setCenter(c, false);
+  resetCornerPreview();
+  afterPlotChange();
+  editor.fitBounds(bboxOf(points), { padding: 70, maxZoom: 19.5 });
+  toast(`Đã vẽ ranh lô đất ${points.length} góc · ${fmtArea(polygonArea(points))}. Chuyển sang “Vệ tinh” để kiểm tra; lệch thì dùng nút “Dịch ranh”.`, false, 7000);
+}
+
 // ---------- khởi tạo ----------
 function fillSelects() {
   const ps = $('selProvince');
-  for (const [name, lon] of PROVINCES) ps.add(new Option(`${name} (${String(lon).replace('.', ',')}°)`, String(lon)));
-  ps.value = '105.75';
-  $('inLon0').value = '105.75';
+  ps.add(new Option('Tự dò theo vị trí căn nhà (khuyên dùng)', 'auto'));
+  ps.add(new Option('Tự gõ kinh tuyến trục…', 'manual'));
+  const og = document.createElement('optgroup');
+  og.label = 'Theo tỉnh ghi trên sổ (tỉnh cũ)';
+  for (const [name, lon] of PROVINCES) og.appendChild(new Option(`${name} – KTT ${fmtMeridian(lon)}`, String(lon)));
+  ps.appendChild(og);
+  ps.value = 'auto';
   for (const [k, s] of Object.entries(MAP_STYLES)) $('o_style').add(new Option(s.label, k));
   for (const [k, l] of Object.entries(TONES)) $('selTone').add(new Option(l, k));
   for (const [k, c] of Object.entries(CATS)) $('poiCatFilter').add(new Option(`${c.icon} ${c.label}`, k));
@@ -726,17 +837,36 @@ function bind() {
     state.plot = state.plot.map(([x, y]) => [x + dx * mx, y + dy * my]);
     afterPlotChange();
   };
-  $('selProvince').onchange = () => { $('inLon0').value = $('selProvince').value; save(); };
-  $('btnCorners').onclick = () => {
+  $('selProvince').onchange = () => { $('inLon0').hidden = $('selProvince').value !== 'manual'; resetCornerPreview(); save(); };
+  $('inLon0').oninput = resetCornerPreview;
+  $('inCorners').addEventListener('input', resetCornerPreview);
+  $('btnReadCorners').onclick = readCorners;
+  $('btnCorners').onclick = applyCorners;
+  $('fileOcr').onchange = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const st = $('ocrStatus');
+    const btn = $('fileOcr').parentElement;
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '.6';
     try {
-      const { points, mode } = parseCorners($('inCorners').value, +$('inLon0').value);
-      if (points.length < 3) return toast('Cần ít nhất 3 góc hợp lệ.', true);
-      state.plot = points;
-      setCenter(centroid(points), false);
-      editor.fitBounds([[Math.min(...points.map((p) => p[0])), Math.min(...points.map((p) => p[1]))], [Math.max(...points.map((p) => p[0])), Math.max(...points.map((p) => p[1]))]], { padding: 80, maxZoom: 19 });
-      afterPlotChange();
-      toast(`Đã vẽ ranh ${points.length} góc (${mode === 'vn2000' ? 'VN-2000' : 'GPS'}) · ${fmtArea(polygonArea(points))}. So với diện tích trên sổ để kiểm tra.`, false, 6000);
-    } catch (e) { toast(e.message, true); }
+      const { rows } = await ocrCoordinates(f, (m) => (st.textContent = m));
+      if (rows.length < 3) {
+        st.textContent = `Chỉ đọc được ${rows.length} dòng toạ độ. Hãy chụp lại gần hơn, thẳng và đủ sáng – hoặc gõ tay vào ô bên dưới.`;
+        if (rows.length) $('inCorners').value = rows.join('\n');
+        return;
+      }
+      $('inCorners').value = rows.join('\n');
+      st.textContent = `✅ Đã đọc ${rows.length} điểm. Hãy so từng số với sổ rồi bấm “Đọc toạ độ”.`;
+      save();
+      readCorners();
+    } catch (err) {
+      st.textContent = '⚠️ ' + (err.message || err);
+    } finally {
+      btn.style.pointerEvents = '';
+      btn.style.opacity = '';
+    }
   };
   $('btnScan').onclick = scan;
   $('btnAutoPick').onclick = () => (state.pois.length ? autoPick() : toast('Hãy bấm “Quét tiện ích” trước.'));
@@ -822,6 +952,8 @@ function bind() {
 }
 
 function afterRestore() {
+  if (!$('selProvince').value) $('selProvince').value = 'auto';
+  $('inLon0').hidden = $('selProvince').value !== 'manual';
   if (state.center) {
     centerMarker.setLngLat(state.center).addTo(editor);
     editor.jumpTo({ center: state.center, zoom: 16.5 });
