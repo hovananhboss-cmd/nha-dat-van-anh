@@ -8,13 +8,22 @@ import {
 
 const ISO_COLORS = { 5: '#22c55e', 10: '#eab308', 15: '#f97316' };
 
+const NOPAD = { top: 0, bottom: 0, left: 0, right: 0 };
+
+function lerpPad(a = NOPAD, b = NOPAD, p) {
+  const o = {};
+  for (const k of ['top', 'bottom', 'left', 'right']) o[k] = (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * p;
+  return o;
+}
+
 function lerpCam(a, b, p, arc = 0) {
-  const db = ((b.bearing - a.bearing + 540) % 360) - 180;
+  const db = ((((b.bearing - a.bearing) % 360) + 540) % 360) - 180;
   return {
     center: [a.center[0] + (b.center[0] - a.center[0]) * p, a.center[1] + (b.center[1] - a.center[1]) * p],
     zoom: a.zoom + (b.zoom - a.zoom) * p - arc * Math.sin(Math.PI * p),
     pitch: a.pitch + (b.pitch - a.pitch) * p,
     bearing: a.bearing + db * p,
+    pad: lerpPad(a.pad, b.pad, p),
   };
 }
 
@@ -88,6 +97,7 @@ export function buildTimeline(S) {
         safe: { x0: 0.04, y0: 0.11, x1: 0.96, y1: portrait ? 0.74 : 0.84 },
       };
 
+  map.jumpTo({ padding: NOPAD }); // cameraForBounds cần padding = 0
   const fit = (coords, pad, maxZoom = 18.4) => {
     const b = bboxOf(coords);
     if (b[0][0] === b[1][0] && b[0][1] === b[1][1]) return { center: b[0], zoom: Math.min(17, maxZoom) };
@@ -97,10 +107,14 @@ export function buildTimeline(S) {
     return { center: cc, zoom: c.zoom };
   };
 
+  // Camera flycam xoay quanh đúng tâm lô đất: dùng padding để đặt tâm lên vùng trống của khung hình
+  const plotC = plot ? centroidOf(plot) : center;
   const plotCoords = plot || [center];
   const pc = fit(plotCoords, L.plotPad, plot ? 19 : 17.3);
-  const camPlot = { ...pc, zoom: plot ? Math.min(pc.zoom, 19) : 17, pitch: 50, bearing: -18 };
-  const camStart = { center: camPlot.center, zoom: Math.max(10, camPlot.zoom - 5), pitch: 0, bearing: -55 };
+  const plotPad = { top: L.plotPad.top, bottom: L.plotPad.bottom, left: L.plotPad.left, right: L.plotPad.right };
+  const zPlot = plot ? Math.min(pc.zoom - 0.6, 17.9) : 17.2;
+  const camPlot = { center: plotC, zoom: zPlot, pitch: 60, bearing: -25, pad: plotPad };
+  const camStart = { center: plotC, zoom: Math.max(10, zPlot - 5.5), pitch: 0, bearing: -100, pad: plotPad };
 
   const scenes = [];
   let cam = camStart;
@@ -118,7 +132,7 @@ export function buildTimeline(S) {
   add({
     name: 'intro', dur: 3.6, to: camPlot,
     cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.95))); },
-    ms(p) { return { plot: seg(p, 0.6, 1), roads: 0 }; },
+    ms(p) { return { plot: seg(p, 0.6, 1), plot3d: ease.out(seg(p, 0.55, 1)), roads: 0 }; },
     draw(ctx, p, lt, E) {
       drawPlotMarker(ctx, E, lt, seg(p, 0.5, 0.8));
       const a = ease.out(seg(p, 0.1, 0.4));
@@ -126,17 +140,29 @@ export function buildTimeline(S) {
     },
   });
 
-  // 2. Cận cảnh lô đất + thông tin
-  const camOrbit = { ...camPlot, bearing: camPlot.bearing + 38 };
+  // 2. Flycam bay vòng quanh vị trí + thông tin
+  const orbit = S.opts.orbit ?? 360;
+  const orbitDur = orbit >= 360 ? 9 : orbit >= 180 ? 6.8 : orbit >= 90 ? 5.4 : 4.8;
+  const camOrbit = { ...camPlot, bearing: camPlot.bearing + (orbit || 38) };
+  const cardAt = orbit >= 180 ? 0.3 : 0.08; // để người xem thấy flycam trước khi hiện thẻ thông tin
   add({
-    name: 'plot', dur: roadsSel.length ? 5.6 : 4.8, to: camOrbit,
-    cam(p) { return lerpCam(this.from, this.to, ease.inOut(p)); },
-    ms(p, lt) { return { plot: 0.6 + 0.4 * Math.sin(lt * 4), roads: roadsSel.length ? ease.out(seg(p, 0.35, 0.6)) : 0 }; },
+    name: 'plot', dur: orbitDur + (roadsSel.length ? 0.8 : 0), to: camOrbit,
+    cam(p) {
+      const k = orbit >= 180 ? (1 - Math.cos(Math.PI * p)) / 2 : ease.inOut(p); // xoay đều, mượt hai đầu
+      return {
+        center: plotC,
+        zoom: zPlot + 0.45 * Math.sin(Math.PI * p),
+        pitch: 60 + 4 * Math.sin(Math.PI * p),
+        bearing: camPlot.bearing + (orbit || 38) * k,
+        pad: plotPad,
+      };
+    },
+    ms(p, lt) { return { plot: 0.6 + 0.4 * Math.sin(lt * 4), plot3d: 1, roads: roadsSel.length ? ease.out(seg(p, cardAt + 0.1, cardAt + 0.3)) : 0 }; },
     draw(ctx, p, lt, E) {
-      if (roadsSel.length) drawRoadLabels(ctx, E, ease.out(seg(p, 0.45, 0.65)));
-      if (plot && S.opts.showDims) drawDims(ctx, E, ease.out(seg(p, 0.2, 0.4)));
+      if (roadsSel.length) drawRoadLabels(ctx, E, ease.out(seg(p, cardAt + 0.15, cardAt + 0.3)));
+      if (plot && S.opts.showDims) drawDims(ctx, E, ease.out(seg(p, 0.1, 0.25)));
       drawPlotMarker(ctx, E, lt, 1);
-      drawInfoCard(ctx, E, ease.out(seg(p, 0.05, 0.25)), p > 0.92 ? 1 - seg(p, 0.92, 1) : 1);
+      drawInfoCard(ctx, E, ease.out(seg(p, cardAt, cardAt + 0.15)), p > 0.94 ? 1 - seg(p, 0.94, 1) : 1);
     },
   });
 
@@ -279,7 +305,7 @@ export function buildTimeline(S) {
   });
 
   // 7. Kết – liên hệ
-  const camEnd = { ...camPlot, zoom: camPlot.zoom - 1.3, pitch: 30, bearing: camPlot.bearing + 60 };
+  const camEnd = { ...camPlot, zoom: camPlot.zoom - 1.3, pitch: 45, bearing: cam.bearing + 70, pad: NOPAD };
   add({
     name: 'outro', dur: 4.6, to: camEnd,
     cam(p) { return lerpCam(this.from, this.to, ease.inOut(p), arcFor(this.from, this.to, cw) * 0.4); },
@@ -428,12 +454,16 @@ export function buildTimeline(S) {
   function drawDims(ctx, E, a) {
     if (a <= 0 || plot.length > 8) return;
     const lens = edgeLengths(plot);
+    // Lô đất quá nhỏ trên màn hình thì không ghi kích thước (tránh chồng lên ghim)
+    const pts = plot.map((q) => E.project(q));
+    const span = Math.max(Math.max(...pts.map((q) => q[0])) - Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[1])) - Math.min(...pts.map((q) => q[1])));
+    if (span < 200 * E.u) return;
     ctx.save();
     ctx.globalAlpha = a;
     plot.forEach((p, i) => {
       const q = plot[(i + 1) % plot.length];
       const [x1, y1] = E.project(p), [x2, y2] = E.project(q);
-      if (Math.hypot(x2 - x1, y2 - y1) < 70 * E.u) return;
+      if (Math.hypot(x2 - x1, y2 - y1) < 110 * E.u) return;
       const txt = (Math.round(lens[i] * 10) / 10).toString().replace('.', ',') + ' m';
       pill(ctx, (x1 + x2) / 2, (y1 + y2) / 2, E.u, txt, 'rgba(15,23,42,.85)', '#fff', 20);
     });
@@ -662,7 +692,7 @@ export function buildTimeline(S) {
     applyMap(t) {
       const { s, p, lt } = locate(t);
       const c = s.cam(p);
-      map.jumpTo({ center: c.center, zoom: c.zoom, pitch: c.pitch, bearing: c.bearing });
+      map.jumpTo({ center: c.center, zoom: c.zoom, pitch: c.pitch, bearing: c.bearing, padding: c.pad || NOPAD });
       const ms = s.ms(p, lt) || {};
       if (!('routesKey' in ms)) { ms.routesKey = 'none'; ms.routes = null; }
       if (ms.routesKey === 'all') ms.routes = { type: 'FeatureCollection', features: doneRoutes.map((r) => lineF(r.coords, r.color, false)) };

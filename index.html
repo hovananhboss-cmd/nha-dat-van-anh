@@ -148,12 +148,16 @@
         <label>Cách hiện tiện ích
           <select id="o_mode"><option value="flyover">Bay theo đường đi (từng điểm)</option><option value="radar">Quét radar (nhanh)</option></select>
         </label>
+        <label>Flycam quanh vị trí
+          <select id="o_orbit"><option value="360">Bay 1 vòng 360°</option><option value="180" selected>Bay nửa vòng 180°</option><option value="90">Lượn nhẹ 90°</option><option value="0">Không xoay</option></select>
+        </label>
         <label>Tốc độ video
           <select id="o_pace"><option value="0.8">Nhanh</option><option value="1" selected>Vừa</option><option value="1.25">Chậm</option></select>
         </label>
         <label>Màu chủ đạo<input type="color" id="o_theme" value="#e11d48"></label>
         <div class="checks">
           <label class="inline"><input type="checkbox" id="o_dims" checked> Hiện kích thước cạnh</label>
+          <label class="inline"><input type="checkbox" id="o_block" checked> Khối 3D phát sáng ở lô đất</label>
           <label class="inline"><input type="checkbox" id="o_subs" checked> Hiện phụ đề</label>
         </div>
       </div>

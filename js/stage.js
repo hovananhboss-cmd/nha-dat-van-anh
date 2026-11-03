@@ -1,45 +1,23 @@
+import { CUSTOM_STYLES, ARTISTIC_THEMES } from './mapstyles.js';
 // Bản đồ "sân khấu" dùng để xem trước và xuất video (không tương tác)
 const OFM = 'https://tiles.openfreemap.org/styles/';
-const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
 
 export const MAP_STYLES = {
-  liberty: { label: 'Đường phố (sáng)', url: OFM + 'liberty', credit: '© OpenStreetMap · OpenFreeMap' },
-  bright: { label: 'Đường phố (rực rỡ)', url: OFM + 'bright', credit: '© OpenStreetMap · OpenFreeMap' },
-  positron: { label: 'Tối giản', url: OFM + 'positron', credit: '© OpenStreetMap · OpenFreeMap' },
-  satellite: { label: 'Vệ tinh + tên đường', url: null, credit: 'Ảnh vệ tinh © Esri, Maxar · © OpenStreetMap' },
-  satellite_plain: { label: 'Vệ tinh (không chữ)', url: null, credit: 'Ảnh vệ tinh © Esri, Maxar' },
+  night: { label: '🌙 Đêm sang trọng (khuyên dùng)', custom: 'night', credit: '© OpenStreetMap · OpenFreeMap' },
+  day: { label: '☀️ Ngày hiện đại', custom: 'day', credit: '© OpenStreetMap · OpenFreeMap' },
+  satellite: { label: '🛰️ Vệ tinh + tên đường', custom: 'satellite', credit: 'Ảnh vệ tinh © Esri, Maxar · © OpenStreetMap' },
+  satellite_plain: { label: '🛰️ Vệ tinh (không chữ)', custom: 'satellite_plain', credit: 'Ảnh vệ tinh © Esri, Maxar' },
+  liberty: { label: 'Đường phố cổ điển', url: OFM + 'liberty', credit: '© OpenStreetMap · OpenFreeMap' },
+  positron: { label: 'Tối giản xám', url: OFM + 'positron', credit: '© OpenStreetMap · OpenFreeMap' },
 };
-
-function rasterStyle(withLabels) {
-  const src = (path, maxzoom = 18) => ({
-    type: 'raster',
-    tiles: [ESRI + path + '/MapServer/tile/{z}/{y}/{x}'],
-    tileSize: 256,
-    maxzoom,
-  });
-  const style = {
-    version: 8,
-    glyphs: GLYPHS,
-    sources: { sat: src('World_Imagery', 18) },
-    layers: [
-      { id: 'bg', type: 'background', paint: { 'background-color': '#1e293b' } },
-      { id: 'sat', type: 'raster', source: 'sat' },
-    ],
-  };
-  if (withLabels) {
-    style.sources.trans = src('Reference/World_Transportation', 18);
-    style.sources.places = src('Reference/World_Boundaries_and_Places', 18);
-    style.layers.push({ id: 'trans', type: 'raster', source: 'trans', paint: { 'raster-opacity': 0.9 } });
-    style.layers.push({ id: 'places', type: 'raster', source: 'places' });
-  }
-  return style;
+// 32 theme nghệ thuật (bảng màu từ MapToPoster JS, MIT)
+for (const [k, t] of Object.entries(ARTISTIC_THEMES)) {
+  MAP_STYLES['art_' + k] = { label: '🎨 ' + t.name, custom: 'art_' + k, group: 'art', credit: '© OpenStreetMap · OpenFreeMap' };
 }
 
 export function styleFor(id) {
-  if (id === 'satellite') return rasterStyle(true);
-  if (id === 'satellite_plain') return rasterStyle(false);
-  return (MAP_STYLES[id] || MAP_STYLES.liberty).url;
+  const s = MAP_STYLES[id] || MAP_STYLES.night;
+  return s.custom ? CUSTOM_STYLES[s.custom]() : s.url;
 }
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -52,6 +30,7 @@ export class Stage {
     this.data = { plot: EMPTY, iso: EMPTY, roads: EMPTY, routes: EMPTY, radar: EMPTY };
     this.theme = '#e11d48';
     this.hidePoi = true;
+    this.plotHeight = 18; // mét
   }
 
   init(styleId, center) {
@@ -115,6 +94,9 @@ export class Stage {
     m.addLayer({ id: 'va-plot-fill', type: 'fill', source: 'va-plot', paint: { 'fill-color': th, 'fill-opacity': 0.35 } });
     m.addLayer({ id: 'va-plot-glow', type: 'line', source: 'va-plot', paint: { 'line-color': th, 'line-width': 12, 'line-blur': 6, 'line-opacity': 0.6 } });
     m.addLayer({ id: 'va-plot-line', type: 'line', source: 'va-plot', paint: { 'line-color': '#ffffff', 'line-width': 3.5 } });
+    // Khối 3D phát sáng đánh dấu lô đất (nổi lên giữa các toà nhà khi flycam)
+    m.addLayer({ id: 'va-plot-3d', type: 'fill-extrusion', source: 'va-plot',
+      paint: { 'fill-extrusion-color': th, 'fill-extrusion-height': 0, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.55 } });
   }
 
   setTheme(color) {
@@ -125,6 +107,7 @@ export class Stage {
     m.setPaintProperty('va-plot-glow', 'line-color', color);
     m.setPaintProperty('va-radar-fill', 'fill-color', color);
     m.setPaintProperty('va-radar-line', 'line-color', color);
+    m.setPaintProperty('va-plot-3d', 'fill-extrusion-color', color);
   }
 
   setData(key, fc) {
@@ -146,6 +129,8 @@ export class Stage {
     const pf = ms.plot ?? 1;
     this.paint('va-plot-fill', 'fill-opacity', 0.18 + 0.32 * pf);
     this.paint('va-plot-glow', 'line-opacity', 0.25 + 0.6 * pf);
+    const h3 = (ms.plot3d ?? 1) * this.plotHeight;
+    this.paint('va-plot-3d', 'fill-extrusion-height', Math.round(h3 * 10) / 10);
     for (const mins of [5, 10, 15]) {
       const o = (ms.iso && ms.iso[mins]) || 0;
       this.paint('va-iso-' + mins, 'fill-opacity', o * 0.28);

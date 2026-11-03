@@ -13,11 +13,11 @@ Công cụ tạo **video giới thiệu vị trí lô đất / căn nhà và ti�
 | 1. Vị trí & ranh đất | Dán link Google Maps / toạ độ / tìm địa chỉ · kéo ghim chỉnh vị trí · **vẽ ranh lô đất** bằng cách chạm từng góc trên ảnh vệ tinh · **nhập toạ độ VN-2000 trên sổ đỏ** (tự đổi sang GPS theo kinh tuyến trục từng tỉnh) · tự đo diện tích và chiều dài các cạnh |
 | 2. Tiện ích xung quanh | Tự quét trường học, bệnh viện, chợ, siêu thị, TTTM, công viên, ngân hàng, UBND, bến xe/ga, KCN… trong bán kính 1–8 km · chọn tối đa 10 · thêm điểm còn thiếu bằng tay · làm nổi bật 2 tuyến đường chính · **vùng 5–10–15 phút** di chuyển (xe máy / ô tô / đi bộ) theo đường thật |
 | 3. Thông tin | Giá, diện tích, kích thước, kết cấu, hướng, pháp lý, điểm nổi bật, tên + SĐT môi giới · tối đa 6 ảnh + 3 video ngắn |
-| 4. Kiểu video | Bản đồ đường phố / tối giản / **vệ tinh** · bay theo đường đi tới từng tiện ích hoặc quét radar · màu chủ đạo · tốc độ |
+| 4. Kiểu video | **36 mẫu bản đồ**: 3 mẫu tự thiết kế (**🌙 Đêm sang trọng**, **☀️ Ngày hiện đại**, **🛰️ Vệ tinh + tên đường**), 32 theme nghệ thuật (Dark Gold, Midnight Neon, Blueprint, Arctic Frost, Paper Heritage…) và các mẫu cổ điển · **flycam bay quanh vị trí** 360° / 180° / 90° · **khối 3D phát sáng** đánh dấu lô đất · bay theo đường đi tới từng tiện ích hoặc quét radar · màu chủ đạo · tốc độ |
 | 5. Kịch bản & âm thanh | Tự viết kịch bản theo 4 giọng văn · **thu âm giọng đọc ngay trong app** hoặc tải file giọng AI (Vbee, FPT.AI, CapCut…) · nhạc nền · **phụ đề tự động** · video tự kéo dài theo giọng đọc |
 | 6. Xuất | Xem trước, tua · xuất MP4 · tải ảnh bìa · lưu / mở dự án (file .json) |
 
-Video gồm các cảnh: bay từ trên cao vào vị trí → cận cảnh lô đất xoay 3D với thẻ thông tin → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
+Video gồm các cảnh: camera lao từ trên cao xuống vị trí → flycam bay vòng quanh lô đất (khối 3D phát sáng) kèm thẻ thông tin → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
 
 ## Cách dùng
 
@@ -49,10 +49,11 @@ Chạy thử trên máy: trong thư mục dự án, chạy `python3 -m http.serv
 
 ## Công nghệ & nguồn dữ liệu (đều miễn phí)
 
-- Bản đồ: [MapLibre GL JS](https://maplibre.org), nền [OpenFreeMap](https://openfreemap.org), ảnh vệ tinh Esri World Imagery
-- Tiện ích & đường: [OpenStreetMap](https://www.openstreetmap.org) qua Overpass API
+- Bản đồ: [MapLibre GL JS](https://maplibre.org), dữ liệu vector [OpenFreeMap](https://openfreemap.org) với mẫu bản đồ tự thiết kế (`js/mapstyles.js`), ảnh vệ tinh Esri World Imagery
+- Tiện ích: [OpenStreetMap](https://www.openstreetmap.org) qua [Photon](https://photon.komoot.io) (chính) và Overpass API (bổ sung khi rảnh) · Đường chính: đọc từ ô bản đồ OpenFreeMap
 - Đường đi: OSRM · Vùng thời gian: Valhalla (FOSSGIS) · Tìm địa chỉ: Nominatim
 - Đổi VN-2000 → WGS84: [proj4js](https://github.com/proj4js/proj4js) (7 tham số theo QĐ 05/2007/QĐ-BTNMT)
+- Bảng màu 32 theme nghệ thuật: [MapToPoster JS](https://github.com/dimartarmizi/map-to-poster) (MIT, © 2026 MapToPoster JS Contributors) – xem `js/themes-artistic.js`
 - Xuất video: WebCodecs + [mp4-muxer](https://github.com/Vanilagy/mp4-muxer)
 
 Video có dòng ghi công bản đồ nhỏ ở góc dưới (© OpenStreetMap…) theo yêu cầu giấy phép dữ liệu, vui lòng giữ lại.
@@ -66,6 +67,9 @@ css/app.css       giao diện
 js/app.js         điều khiển giao diện, lưu dự án, xem trước
 js/geo.js         toạ độ, đọc link Google Maps, VN-2000, đo diện tích
 js/data.js        lấy tiện ích / đường đi / vùng thời gian / tìm địa chỉ
+js/mapstyles.js   bộ dựng mẫu bản đồ (Đêm / Ngày / Vệ tinh / theme nghệ thuật)
+js/themes-artistic.js  32 bảng màu nghệ thuật (MapToPoster JS, MIT)
+js/ocr.js         đọc bảng toạ độ từ ảnh sổ đỏ
 js/stage.js       bản đồ dựng video và các lớp (ranh, đường, vùng phút)
 js/scenes.js      kịch bản chuyển động camera và đồ hoạ từng cảnh
 js/overlay.js     vẽ ghim, thẻ, chữ
