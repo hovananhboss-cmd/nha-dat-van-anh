@@ -102,8 +102,16 @@ function paletteTheme(P) {
   };
 }
 
+// 3 bảng màu tối "sang trọng" cho video BĐS (cùng định dạng MapToPoster).
+// black_champagne dựa trên Protomaps basemaps flavor "black" (BSD-3-Clause); 2 bảng còn lại tự phối.
+const DARK_PALETTES = {
+  navy_gold: { bg: '#0B1426', text: '#E8EEF7', water: '#0E2240', parks: '#0F2A24', road_motorway: '#F2C14E', road_primary: '#F2C14E', road_secondary: '#3B5A85', road_tertiary: '#2A4568', road_residential: '#1E3A5F' },
+  emerald_noir: { bg: '#0A0F0D', text: '#D8F3E6', water: '#0D1F1C', parks: '#123326', road_motorway: '#C9A227', road_primary: '#2EE59D', road_secondary: '#2A3B35', road_tertiary: '#22312C', road_residential: '#1B2723' },
+  black_champagne: { bg: '#141414', text: '#E8E2D4', water: '#2A2A2A', parks: '#181818', road_motorway: '#E8C98A', road_primary: '#E8C98A', road_secondary: '#3A3A3A', road_tertiary: '#2F2F2F', road_residential: '#262626' },
+};
+
 function vectorStyle(kind) {
-  const T = THEMES[kind] || paletteTheme(ARTISTIC_THEMES[kind]);
+  const T = THEMES[kind] || paletteTheme(DARK_PALETTES[kind] || ARTISTIC_THEMES[kind]);
   return { version: 8, glyphs: GLYPHS, sources: { omt: OMT }, layers: [...baseLayers(T), ...labelLayers(T)] };
 }
 
@@ -115,7 +123,8 @@ function satelliteStyle(withLabels) {
     sources: { sat: { type: 'raster', tiles: [ESRI], tileSize: 256, maxzoom: 18 }, omt: OMT },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': '#1e293b' } },
-      { id: 'sat', type: 'raster', source: 'sat', paint: { 'raster-saturation': 0.1, 'raster-contrast': 0.08 } },
+      // raster-fade-duration 0: mờ dần 300 ms làm mỗi khung xuất phải chờ thêm (đo: xuất nhanh gần gấp đôi)
+      { id: 'sat', type: 'raster', source: 'sat', paint: { 'raster-saturation': 0.1, 'raster-contrast': 0.08, 'raster-brightness-max': 0.85, 'raster-fade-duration': 0 } },
     ],
   };
   if (withLabels) {
@@ -135,6 +144,9 @@ export { ARTISTIC_THEMES };
 export const CUSTOM_STYLES = {
   ...Object.fromEntries(Object.keys(ARTISTIC_THEMES).map((k) => ['art_' + k, () => vectorStyle(k)])),
   night: () => vectorStyle('night'),
+  navy_gold: () => vectorStyle('navy_gold'),
+  emerald_noir: () => vectorStyle('emerald_noir'),
+  black_champagne: () => vectorStyle('black_champagne'),
   day: () => vectorStyle('day'),
   satellite: () => satelliteStyle(true),
   satellite_plain: () => satelliteStyle(false),

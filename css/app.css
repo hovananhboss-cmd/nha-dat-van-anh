@@ -98,6 +98,7 @@ details.sub > * + * { margin-top: 8px; }
 .road-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .road-list button { font-weight: 500; font-size: 13px; padding: 6px 10px; }
 .road-list button.on { background: #facc15; color: #111827; border-color: #eab308; }
+.road-list button.minor { background: #fef3c7; color: #111827; border-color: #fcd34d; }
 
 .media-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .media-list .m { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #000; }

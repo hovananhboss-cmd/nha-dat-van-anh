@@ -3,10 +3,15 @@ import { CUSTOM_STYLES, ARTISTIC_THEMES } from './mapstyles.js';
 const OFM = 'https://tiles.openfreemap.org/styles/';
 
 export const MAP_STYLES = {
-  satellite: { label: '🛰️ Vệ tinh + tên đường (khuyên dùng)', custom: 'satellite', credit: 'Ảnh vệ tinh © Esri, Maxar · © OpenStreetMap' },
-  night: { label: '🌙 Đêm sang trọng', custom: 'night', credit: '© OpenStreetMap · OpenFreeMap' },
+  satellite: { label: '🛰️ Vệ tinh + tên đường (khuyên dùng)', custom: 'satellite', credit: 'Ảnh vệ tinh: Esri, Maxar, Earthstar Geographics · © OpenStreetMap contributors' },
+  night: { label: '🌙 Đêm sang trọng', custom: 'night', credit: '© OpenStreetMap · OpenFreeMap', haze: '#0b1324' },
+  navy_gold: { label: '🌃 Navy & Gold – xanh đêm ánh vàng', custom: 'navy_gold', credit: '© OpenStreetMap · OpenFreeMap', haze: '#0B1426' },
+  emerald_noir: { label: '💎 Emerald Noir – đen ngọc lục bảo', custom: 'emerald_noir', credit: '© OpenStreetMap · OpenFreeMap', haze: '#0A0F0D' },
+  black_champagne: { label: '🖤 Đen champagne – tối giản', custom: 'black_champagne', credit: '© OpenStreetMap · OpenFreeMap · Protomaps', haze: '#141414' },
+  fiord: { label: '🌊 Fiord xanh navy', url: OFM + 'fiord', credit: '© OpenStreetMap · OpenMapTiles · OpenFreeMap', haze: '#45516E' },
+  dark: { label: '⚫ Tối giản xám đen', url: OFM + 'dark', credit: '© OpenStreetMap · OpenMapTiles · OpenFreeMap', haze: '#1f1f1f' },
   day: { label: '☀️ Ngày hiện đại', custom: 'day', credit: '© OpenStreetMap · OpenFreeMap' },
-  satellite_plain: { label: '🛰️ Vệ tinh (không chữ)', custom: 'satellite_plain', credit: 'Ảnh vệ tinh © Esri, Maxar' },
+  satellite_plain: { label: '🛰️ Vệ tinh (không chữ)', custom: 'satellite_plain', credit: 'Ảnh vệ tinh: Esri, Maxar, Earthstar Geographics' },
   liberty: { label: 'Đường phố cổ điển', url: OFM + 'liberty', credit: '© OpenStreetMap · OpenFreeMap' },
   positron: { label: 'Tối giản xám', url: OFM + 'positron', credit: '© OpenStreetMap · OpenFreeMap' },
 };
@@ -27,7 +32,7 @@ export class Stage {
     this.container = container;
     this.map = null;
     this.cache = {};
-    this.data = { plot: EMPTY, iso: EMPTY, roads: EMPTY, infra: EMPTY, routes: EMPTY, radar: EMPTY };
+    this.data = { plot: EMPTY, iso: EMPTY, roads: EMPTY, roads2: EMPTY, infra: EMPTY, routes: EMPTY, radar: EMPTY };
     this.theme = '#e11d48';
     this.hidePoi = true;
     this.plotHeight = 18; // mét
@@ -72,6 +77,8 @@ export class Stage {
         if (/^poi|_poi|poi_/.test(l.id) || l.id === 'aerodrome_label') m.setLayoutProperty(l.id, 'visibility', 'none');
       }
     }
+    // Tên đường: độ đậm điều khiển theo từng khung (ms.labels) – ẩn khi flycam xoay để chữ không trôi vòng
+    this.labelIds = m.getStyle().layers.filter((l) => l.type === 'symbol' && l['source-layer'] === 'transportation_name').map((l) => l.id);
     for (const k of Object.keys(this.data)) m.addSource('va-' + k, { type: 'geojson', data: this.data[k] });
     const th = this.theme;
     const isoColors = { 5: '#22c55e', 10: '#eab308', 15: '#f97316' };
@@ -81,6 +88,9 @@ export class Stage {
       m.addLayer({ id: 'va-iso-line-' + mins, type: 'line', source: 'va-iso', filter: ['==', ['get', 'minutes'], mins],
         paint: { 'line-color': isoColors[mins], 'line-width': 2.5, 'line-opacity': 0 } });
     }
+    // đường phụ: mảnh, trắng ngà – nằm dưới đường chính
+    m.addLayer({ id: 'va-roads2', type: 'line', source: 'va-roads2', layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#fef3c7', 'line-width': 3, 'line-opacity': 0 } });
     m.addLayer({ id: 'va-roads-glow', type: 'line', source: 'va-roads', layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': '#facc15', 'line-width': 16, 'line-blur': 8, 'line-opacity': 0 } });
     m.addLayer({ id: 'va-roads', type: 'line', source: 'va-roads', layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -159,6 +169,8 @@ export class Stage {
     }
     this.paint('va-roads', 'line-opacity', ms.roads || 0);
     this.paint('va-roads-glow', 'line-opacity', (ms.roads || 0) * 0.6);
+    this.paint('va-roads2', 'line-opacity', (ms.roads || 0) * 0.85);
+    for (const id of this.labelIds) this.paint(id, 'text-opacity', ms.labels ?? 1);
     if (ms.routesKey !== this.cache.routesKey) {
       this.cache.routesKey = ms.routesKey;
       this.setData('routes', ms.routes || EMPTY);

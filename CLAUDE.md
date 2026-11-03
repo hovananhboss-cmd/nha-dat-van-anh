@@ -24,13 +24,14 @@ Trong VS Code: `Terminal → Run Task → Chạy Studio Vị Trí`, hoặc exten
 | `js/scenes.js` | **Lõi chuyển động**: `buildTimeline(S)` tạo danh sách cảnh `{name, dur, cam(p), ms(p), draw(ctx,p,lt,E)}` |
 | `js/stage.js` | Bản đồ MapLibre dùng để dựng (không tương tác), các lớp `va-*` (lô đất, đường, hạ tầng, vùng phút…), `settle()` chờ vẽ xong |
 | `js/overlay.js` | Vẽ canvas: ghim, thẻ tên (`measureCard`/`cardBox`), đốm sáng `comet`, tiện ích chữ |
-| `js/mapstyles.js` | Bộ dựng style bản đồ (Vệ tinh + tên đường, Đêm, Ngày, 32 theme nghệ thuật) trên dữ liệu OpenFreeMap |
+| `js/mapstyles.js` | Bộ dựng style bản đồ (Vệ tinh + tên đường, Đêm, Ngày, 3 bảng tối Navy & Gold / Emerald Noir / Đen champagne, 32 theme nghệ thuật) trên dữ liệu OpenFreeMap. Ảnh vệ tinh tắt `raster-fade-duration` để xuất nhanh |
 | `js/themes-artistic.js` | 32 bảng màu từ MapToPoster JS (MIT – giữ nguyên thông báo giấy phép) |
 | `js/tiles.js` | **Nguồn tiện ích chính**: giải mã ô vector z14 OpenFreeMap (lớp `poi`, `transportation_name`) |
-| `js/data.js` | Danh mục tiện ích `CATS`, Photon (nguồn phụ), Overpass (hay quá tải, không còn dùng khi quét), OSRM, Valhalla, Nominatim, giải link rút gọn Google Maps |
+| `js/data.js` | Danh mục tiện ích `CATS`, Photon (nguồn phụ), OSRM (xếp hàng 1 yêu cầu/giây, nhớ cả yêu cầu đang chạy), Valhalla, Nominatim (tìm địa chỉ + **khu công nghiệp**: ô bản đồ không có tên vùng KCN), giải link rút gọn Google Maps |
 | `js/geo.js` | Hình học, đọc link/toạ độ, **VN-2000 → WGS84** (proj4, 7 tham số, KTT theo tỉnh – TT 973/2001) |
 | `js/regional.js`, `js/infra-data.js` | Điểm mốc "Kết nối vùng"; tuyến Vành đai 3, Vành đai 4, Cao tốc TP.HCM – TDM – Chơn Thành (trích từ OSM) |
 | `js/exporter.js` | Xuất MP4: WebCodecs + mp4-muxer, trộn giọng đọc/nhạc bằng OfflineAudioContext |
+| `js/sound.js` | Nhạc nền + SFX tự tổng hợp (Web Audio), xếp theo `start` của từng cảnh – không dùng file nhạc |
 | `js/script.js` | Mẫu kịch bản lời đọc (không dùng AI) |
 | `.github/workflows/pages.yml` | Đăng Pages; gắn `?v=<commit>` vào mọi import để điện thoại không dùng bản cũ trong bộ nhớ đệm |
 
@@ -40,12 +41,14 @@ Thư viện tải từ CDN, **ghim phiên bản cố định**: maplibre-gl 4.7.
 ## Thứ tự cảnh trong video
 intro (lao thẳng xuống) → zoomlot (nhìn thẳng, lô đất phát sáng, kích thước cạnh, thẻ **THÔNG TIN BẤT ĐỘNG SẢN** 3D)
 → plot (flycam 1 vòng 360°) → road (nối tới đường chính) → iso (vùng 5–10–15 phút, tuỳ chọn)
-→ poi × N (dẫn đường từng tiện ích) → overview → region × N + region-all (kết nối vùng) → infra (hạ tầng) → media (ảnh/video) → outro.
+→ scan (radar theo bán kính) → poi × N (dẫn đường từng tiện ích) → overview → region × N + region-all (kết nối vùng) → infra (hạ tầng) → media (ảnh/video) → outro.
 
 Camera: `lerpCam` di chuyển tâm theo tỉ lệ zoom (như flyTo); `chase()` + `chaseCamFn()` cho cảnh dẫn đường.
 
 ## Quyết định đã chốt với người dùng (đừng đổi nếu không được yêu cầu)
-- **Camera luôn giữ hướng Bắc**, chỉ lia/zoom theo đường đi ("bay nhiều hướng nhìn rối"). Chỉ cảnh flycam lô đất được xoay, và phải đủ 360° (hoặc không xoay).
+- Tên đường của bản đồ hiện ở mọi cảnh giữ hướng Bắc, mờ đi khi flycam xoay (`ms.labels`) – "tên đường bay vòng quanh rối mắt".
+- **Camera luôn giữ hướng Bắc**, chỉ lia/zoom theo đường đi ("bay nhiều hướng nhìn rối"). Chỉ cảnh flycam lô đất được xoay: 360° / 180° / 90° / không xoay (90°, 180° lia đối xứng quanh hướng Bắc).
+- Radar quét (cảnh `scan`, trước các cảnh tiện ích) có bán kính = bán kính quét tiện ích ở bước 2. Đường: tối đa 3 chính (nổi bật + đường nối) và 3 phụ (vẽ mảnh).
 - Mặc định **Vệ tinh + tên đường**; **Video sạch** bật mặc định (không tiêu đề, giá, liên hệ, phụ đề – chỉ lô đất, diện tích, tiện ích).
 - Toạ độ VN-2000 **nhập tay** (đã bỏ tính năng chụp ảnh sổ / OCR). Diện tích & cạnh tính trực tiếp từ X,Y để khớp số trên sổ.
 - Khi flycam, lô đất nằm **giữa màn hình**.

@@ -278,13 +278,6 @@ export function sortAroundCentroid(poly) {
   return poly.slice().sort((p, q) => Math.atan2(p[1] - c[1], p[0] - c[0]) - Math.atan2(q[1] - c[1], q[0] - c[0]));
 }
 
-// Tương thích cũ: mỗi dòng "lat, lng" (WGS84) hoặc "X Y" (VN-2000)
-export function parseCorners(text, lon0) {
-  const { vn, gps } = parseCornerRows(text);
-  if (vn.length) return { points: vn.map((r) => vn2000ToWgs84(r.X, r.Y, lon0)), mode: 'vn2000' };
-  return { points: gps, mode: gps.length ? 'wgs84' : null };
-}
-
 export function fmtDist(m) {
   if (m < 1000) return `${Math.round(m / 10) * 10} m`;
   return `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`;

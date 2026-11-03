@@ -36,7 +36,7 @@ const SUB = {
   kindergarten: 'kinder', school: 'school', university: 'university', college: 'university',
   hospital: 'hospital', clinic: 'clinic', doctors: 'clinic',
   marketplace: 'market', supermarket: 'supermarket', mall: 'mall', department_store: 'mall',
-  bank: 'bank', park: 'park', townhall: 'admin', bus_station: 'transport',
+  bank: 'bank', park: 'park', townhall: 'admin', government: 'admin', courthouse: 'admin', bus_station: 'transport',
   place_of_worship: 'worship', fuel: 'fuel',
   pharmacy: 'pharmacy', chemist: 'pharmacy',
   sports_centre: 'sports', fitness_centre: 'sports', stadium: 'sports', swimming_pool: 'sports',
@@ -53,6 +53,7 @@ export function fixCategory(cat, name) {
   if ((cat === 'school' || cat === 'kinder') && /nhà sách|cửa hàng|văn phòng phẩm|book ?store|\bshop\b/.test(n)) return null;
   if (cat === 'school' && /mầm non|mẫu giáo|nhà trẻ/.test(n)) return 'kinder';
   if (cat === 'transport' && !/bến xe|nhà ga|^ga\b|sân bay|metro|station|terminal|cảng/.test(n)) return null;
+  if (cat !== 'industrial' && /^(kcn|ccn|khu công nghiệp|cụm công nghiệp)(\s|$)/.test(n)) return null; // VD "KCN VSIP" gắn nhầm là TTTM
   if (cat === 'industrial' && !/khu công nghiệp|cụm công nghiệp|\bkcn\b|\bccn\b|industrial (park|zone|estate)/.test(n)) return null;
   return cat;
 }

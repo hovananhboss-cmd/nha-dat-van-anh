@@ -144,15 +144,17 @@ export function comet(ctx, x, y, u, color, t = 0) {
 }
 
 // Thẻ tên tiện ích: trả về hộp đã vẽ để tránh chồng lấn
-export const CARD = { title: 31, sub: 26, lh: 38, subH: 36, pad: 20, gap: 54 };
+export const CARD = { title: 31, sub: 26, lh: 38, subH: 36, pad: 20, gap: 54, tag: 19, tagH: 30 };
 
-export function measureCard(ctx, u, title, sub, maxW) {
+// tag: dòng nhỏ phía trên tên cho biết loại tiện ích (VD "🧺 CHỢ") – đọc lướt vẫn hiểu
+export function measureCard(ctx, u, title, sub, maxW, tag = '') {
   font(ctx, CARD.title * u, 700);
   const lines = wrap(ctx, title, maxW, 2);
   let w = Math.max(...lines.map((l) => ctx.measureText(l).width));
   if (sub) { font(ctx, CARD.sub * u, 700); w = Math.max(w, ctx.measureText(sub).width); }
+  if (tag) { font(ctx, CARD.tag * u, 800); w = Math.max(w, ctx.measureText(tag).width); }
   const pad = CARD.pad * u;
-  const h = lines.length * CARD.lh * u + (sub ? CARD.subH * u : 0) + pad * 1.3;
+  const h = (tag ? CARD.tagH * u : 0) + lines.length * CARD.lh * u + (sub ? CARD.subH * u : 0) + pad * 1.3;
   return { lines, w: w + pad * 2 + 8 * u, h };
 }
 
@@ -173,7 +175,8 @@ export function cardBox(x, y, u, m, place) {
 export function poiCard(ctx, x, y, u, cat, title, sub, alpha = 1, opts = {}) {
   if (alpha <= 0.01) return null;
   const maxW = opts.maxW || 500 * u;
-  const m = measureCard(ctx, u, title, sub, maxW);
+  const tag = opts.tag ? opts.tag.toLocaleUpperCase('vi') : '';
+  const m = measureCard(ctx, u, title, sub, maxW, tag);
   const place = opts.place || 'top';
   let { x: bx, y: by } = cardBox(x, y, u, m, place);
   if (opts.bounds) {
@@ -187,7 +190,7 @@ export function poiCard(ctx, x, y, u, cat, title, sub, alpha = 1, opts = {}) {
   // viền sáng theo màu tiện ích
   shadow(ctx, 22 * u, hexA(cat.color, 0.55), 0);
   rrect(ctx, bx, by, m.w, m.h, 18 * u);
-  ctx.fillStyle = 'rgba(255,255,255,.97)';
+  ctx.fillStyle = 'rgba(12,18,32,.84)';
   ctx.fill();
   noShadow(ctx);
   ctx.lineWidth = 3 * u;
@@ -198,14 +201,21 @@ export function poiCard(ctx, x, y, u, cat, title, sub, alpha = 1, opts = {}) {
   ctx.fill();
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  font(ctx, CARD.title * u, 700);
-  ctx.fillStyle = '#0f172a';
   const tx = bx + pad + 8 * u;
-  m.lines.forEach((l, i) => ctx.fillText(l, tx, by + pad * 0.65 + i * CARD.lh * u));
+  let ty = by + pad * 0.65;
+  if (tag) {
+    font(ctx, CARD.tag * u, 800);
+    ctx.fillStyle = tint(cat.color);
+    ctx.fillText(tag, tx, ty + 2 * u);
+    ty += CARD.tagH * u;
+  }
+  font(ctx, CARD.title * u, 700);
+  ctx.fillStyle = '#ffffff';
+  m.lines.forEach((l, i) => ctx.fillText(l, tx, ty + i * CARD.lh * u));
   if (sub) {
     font(ctx, CARD.sub * u, 700);
-    ctx.fillStyle = cat.color;
-    ctx.fillText(sub, tx, by + pad * 0.65 + m.lines.length * CARD.lh * u + 4 * u);
+    ctx.fillStyle = tint(cat.color);
+    ctx.fillText(sub, tx, ty + m.lines.length * CARD.lh * u + 4 * u);
   }
   ctx.restore();
   return { x: bx, y: by, w: m.w, h: m.h };
@@ -228,6 +238,13 @@ export function pill(ctx, x, y, u, text, bg, fg = '#fff', size = 22, align = 'ce
   return { x: bx, y: y - h / 2, w, h };
 }
 
+// pha màu với trắng – màu tiện ích tối (VD xám KCN) vẫn đọc rõ trên nền tối
+export function tint(hex, k = 0.45) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const m = (c) => Math.round(c + (255 - c) * k);
+  return `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`;
+}
+
 export function hexA(hex, a) {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
@@ -241,8 +258,4 @@ export function drawCover(ctx, img, W, H, zoom = 1, panX = 0, panY = 0) {
   const s = Math.max(W / iw, H / ih) * zoom;
   const w = iw * s, h = ih * s;
   ctx.drawImage(img, (W - w) / 2 + panX * (w - W) / 2, (H - h) / 2 + panY * (h - H) / 2, w, h);
-}
-
-export function boxesOverlap(a, b, m = 0) {
-  return !(a.x + a.w + m < b.x || b.x + b.w + m < a.x || a.y + a.h + m < b.y || b.y + b.h + m < a.y);
 }

@@ -5,9 +5,10 @@ import {
 import { LANDMARKS, INFRA_LIST, infraNearest } from './regional.js';
 import { CATS, fetchSurroundings, fetchRoute, fetchIsochrones, geocode, unshortenMapsLink } from './data.js';
 import { Stage, MAP_STYLES, styleFor } from './stage.js';
-import { buildTimeline, poiSub } from './scenes.js';
+import { buildTimeline } from './scenes.js';
 import { exportVideo, mixAudio, canExport } from './exporter.js';
 import { generateScript, TONES } from './script.js';
+import { musicLoop } from './sound.js';
 
 const $ = (id) => document.getElementById(id);
 const STAGE_SIZES = { '9:16': [540, 960], '16:9': [960, 540], '1:1': [720, 720] };
@@ -19,7 +20,7 @@ const OUT = {
 const MAX_POI = 10;
 const STORE = 'va-studio-v1';
 const FIELDS = ['f_tag', 'f_price', 'f_title', 'f_address', 'f_area', 'f_size', 'f_rooms', 'f_direction', 'f_legal', 'f_extra', 'f_agent', 'f_phone',
-  'o_aspect', 'o_style', 'o_mode', 'o_orbit', 'o_block', 'o_clean', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
+  'o_aspect', 'o_style', 'o_mode', 'o_orbit', 'o_block', 'o_clean', 'o_pace', 'o_theme', 'o_preset', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'o_bgm', 'o_sfx', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
 
 const state = {
   center: null,
@@ -28,7 +29,7 @@ const state = {
   custom: [],
   selected: [],
   roads: [],
-  roadSel: [],
+  roadSel: [], roadMinor: [],
   lmSel: LANDMARKS.filter((l) => l.def).map((l) => l.id),
   lmCustom: [],
   infraSel: INFRA_LIST.map((x) => x.id),
@@ -75,19 +76,31 @@ function snapshot() {
   return {
     v: 2,
     center: state.center, plot: state.plot, pois: state.pois.slice(0, 500).map(stripRoute), custom: state.custom.map(stripRoute),
-    selected: state.selected, roads: state.roads.map(({ connector, ...r }) => r), roadSel: state.roadSel, plotAreaExact: state.plotAreaExact || 0, plotEdgesExact: state.plotEdgesExact || null,
+    selected: state.selected, roads: state.roads.map(({ connector, ...r }) => r), roadSel: state.roadSel, roadMinor: state.roadMinor, plotAreaExact: state.plotAreaExact || 0, plotEdgesExact: state.plotEdgesExact || null,
     lmSel: state.lmSel, lmCustom: state.lmCustom.map(stripRoute), infraSel: state.infraSel, fields: f,
   };
 }
 function stripRoute(p) { const { route, routeFrom, ...rest } = p; return rest; }
 function save() {
   try { localStorage.setItem(STORE, JSON.stringify(snapshot())); } catch (_) {}
+  prefetchRoutes();
+}
+
+// Tính sẵn đường đi trong lúc người dùng chọn -> bấm "Dựng & xem trước" không phải chờ OSRM
+function prefetchRoutes() {
+  clearTimeout(prefetchRoutes._t);
+  prefetchRoutes._t = setTimeout(() => {
+    if (!state.center || val('o_mode') !== 'flyover') return;
+    const o = origin();
+    for (const p of state.selected.map(getPoi).filter(Boolean)) fetchRoute(o, p.lngLat);
+    for (const l of allLandmarks().filter((x) => state.lmSel.includes(x.id) && haversine(o, x.lngLat) <= LM_MAX_KM * 1000)) fetchRoute(o, l.lngLat);
+  }, 1500);
 }
 function restore(data) {
   if (!data) return;
   Object.assign(state, {
     center: data.center || null, plot: data.plot || [], pois: data.pois || [], custom: data.custom || [],
-    selected: data.selected || [], roads: data.roads || [], roadSel: data.roadSel || [], plotAreaExact: data.plotAreaExact || 0, plotEdgesExact: data.plotEdgesExact || null,
+    selected: data.selected || [], roads: data.roads || [], roadSel: data.roadSel || [], roadMinor: data.roadMinor || [], plotAreaExact: data.plotAreaExact || 0, plotEdgesExact: data.plotEdgesExact || null,
     lmSel: data.lmSel || state.lmSel, lmCustom: data.lmCustom || [], infraSel: data.infraSel || state.infraSel,
   });
   const fields = { ...(data.fields || {}) };
@@ -225,7 +238,9 @@ function setEditMode(m) {
 }
 
 // ---------- tiện ích ----------
-const PRIORITY = ['school', 'hospital', 'market', 'supermarket', 'mall', 'park', 'university', 'kinder', 'admin', 'transport', 'pharmacy', 'bank', 'sports', 'entertain', 'clinic', 'industrial', 'worship', 'fuel', 'post', 'police', 'convenience', 'hotel', 'food'];
+// Bộ màu đồng bộ: mono = mọi tiện ích dùng màu chủ đạo (phân biệt bằng biểu tượng)
+const PRESETS = { gold: { theme: '#d4af37', mono: true }, modern: { theme: '#2563eb', mono: true }, neon: { theme: '#22d3ee', mono: false } };
+const PRIORITY = ['school', 'hospital', 'market', 'admin', 'industrial', 'supermarket', 'mall', 'park', 'university', 'kinder', 'transport', 'pharmacy', 'bank', 'sports', 'entertain', 'clinic', 'worship', 'fuel', 'post', 'police', 'convenience', 'hotel', 'food'];
 
 function autoPick() {
   const picked = [];
@@ -357,13 +372,17 @@ function renderRoads() {
   box.innerHTML = '';
   for (const r of state.roads) {
     const b = document.createElement('button');
-    const on = state.roadSel.includes(r.name);
-    b.className = on ? 'on' : '';
-    b.textContent = `${on ? '⭐' : '☆'} ${r.name} · ${fmtDist(r.dist)}`;
+    const on = state.roadSel.includes(r.name), minor = state.roadMinor.includes(r.name);
+    b.className = on ? 'on' : minor ? 'minor' : '';
+    b.textContent = `${on ? '⭐' : minor ? '➖' : '☆'} ${r.name} · ${fmtDist(r.dist)}`;
+    // bấm lần lượt: chưa chọn → chính → phụ → bỏ chọn (nhóm nào đủ 3 thì bỏ qua nhóm đó)
     b.onclick = () => {
-      const i = state.roadSel.indexOf(r.name);
-      if (i >= 0) state.roadSel.splice(i, 1);
-      else { if (state.roadSel.length >= 2) state.roadSel.shift(); state.roadSel.push(r.name); }
+      const drop = (arr) => arr.splice(arr.indexOf(r.name), 1);
+      if (on) { drop(state.roadSel); if (state.roadMinor.length < 3) state.roadMinor.push(r.name); }
+      else if (minor) drop(state.roadMinor);
+      else if (state.roadSel.length < 3) state.roadSel.push(r.name);
+      else if (state.roadMinor.length < 3) state.roadMinor.push(r.name);
+      else return toast('Đã chọn đủ 3 đường chính và 3 đường phụ. Bỏ bớt một đường trước.');
       renderRoads(); markDirty(); save();
     };
     box.appendChild(b);
@@ -383,6 +402,7 @@ async function scan() {
     state.roads = res.roads;
     state.selected = state.selected.filter((id) => getPoi(id));
     state.roadSel = state.roadSel.filter((n) => state.roads.some((r) => r.name === n));
+    state.roadMinor = state.roadMinor.filter((n) => state.roads.some((r) => r.name === n));
     if (!keep.size || !state.selected.length) autoPick();
     renderPoiList(); renderRoads(); refreshEditor();
     if (!res.pois.length) toast('Không tìm thấy tiện ích nào trong bán kính này. Thử tăng bán kính, hoặc thêm bằng tay (➕ Thêm tiện ích).', true, 7000);
@@ -596,7 +616,9 @@ async function ensureBuilt() {
   const plot = state.plot.length >= 3 ? state.plot : null;
   stage.setData('plot', plot ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...plot, plot[0]]] } }] } : null);
   stage.setData('iso', iso ? { type: 'FeatureCollection', features: iso.map((f) => ({ type: 'Feature', properties: { minutes: f.minutes }, geometry: f.geometry })) } : null);
-  stage.setData('roads', { type: 'FeatureCollection', features: roadsSel.flatMap((r) => r.lines.map((l) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: l } }))) });
+  const lineFC = (rs) => ({ type: 'FeatureCollection', features: rs.flatMap((r) => r.lines.map((l) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: l } }))) });
+  stage.setData('roads', lineFC(roadsSel));
+  stage.setData('roads2', lineFC(state.roads.filter((r) => state.roadMinor.includes(r.name))));
   stage.setData('routes', null);
   stage.cache = {};
   if (!document.fonts.check('700 20px "Be Vietnam Pro"')) {
@@ -616,15 +638,19 @@ async function ensureBuilt() {
     media: state.media,
     script: val('inScript'),
     voiceDuration: state.voice ? state.voice.duration : 0,
-    credit: MAP_STYLES[styleId].credit,
+    credit: MAP_STYLES[styleId].credit + ' · Đường đi: OSRM',
+    haze: MAP_STYLES[styleId].haze,
     plotArea: state.plotAreaExact || 0,
     plotEdges: state.plotEdgesExact || null,
     opts: {
-      theme: val('o_theme'), pace: +val('o_pace'), mode, speedKmh: +val('inSpeed') || 30,
-      showDims: val('o_dims'), subtitles: val('o_subs'), isoLabel, voiceDelay: 0.5, orbit: +val('o_orbit'), clean: val('o_clean'),
+      theme: val('o_theme'), mono: !!PRESETS[val('o_preset')]?.mono, pace: +val('o_pace'), mode, speedKmh: +val('inSpeed') || 30,
+      showDims: val('o_dims'), subtitles: val('o_subs'), radius: +val('selRadius'), isoLabel, voiceDelay: 0.5, orbit: +val('o_orbit'), clean: val('o_clean'),
     },
   });
-  mixed = await mixAudio({ voice: state.voice, music: state.music, duration: timeline.duration, voiceDelay: 0.5, musicVolume: +val('musicVol') });
+  mixed = await mixAudio({
+    voice: state.voice, music: state.music, duration: timeline.duration, voiceDelay: 0.5, musicVolume: +val('musicVol'),
+    bgm: val('o_bgm'), sfx: val('o_sfx') ? timeline.scenes : null,
+  });
   dirty = false;
   playT = 0;
   status(`Video dài ${fmtTime(timeline.duration)} · ${sel.length} tiện ích · ${state.media.length} ảnh/video`);
@@ -1030,6 +1056,13 @@ function bind() {
   $('btnCover').onclick = doCover;
   $('o_aspect').onchange = () => { fitPreview(); markDirty(); save(); };
   $('o_theme').oninput = () => document.documentElement.style.setProperty('--accent', $('o_theme').value);
+  $('o_preset').addEventListener('change', () => {
+    const pr = PRESETS[val('o_preset')];
+    if (!pr) return;
+    $('o_theme').value = pr.theme;
+    $('o_theme').dispatchEvent(new Event('input'));
+    $('o_theme').dispatchEvent(new Event('change'));
+  });
   for (const id of FIELDS) {
     const el = $(id);
     el.addEventListener('change', () => { markDirty(); save(); });
@@ -1093,6 +1126,7 @@ async function main() {
   renderAudioInfo();
   if (!canExport()) status('⚠️ Trình duyệt này không xuất được video – hãy mở bằng Chrome/Edge/Safari mới.');
   window.__va = { state, get timeline() { return timeline; }, stage, ensureBuilt, renderPreview, setCenter, doExport };
+  setTimeout(() => musicLoop().catch(() => {}), 1500); // tổng hợp sẵn nhạc nền trong lúc người dùng nhập liệu
 }
 
 main();

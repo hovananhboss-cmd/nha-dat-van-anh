@@ -100,7 +100,7 @@
           <select id="poiCatFilter"><option value="">Tất cả loại</option></select>
         </div>
         <div id="poiList" class="poi-list"><p class="empty">Chưa có dữ liệu – bấm “Quét tiện ích”.</p></div>
-        <label>🛣️ Đường chính gần nhất (chọn tối đa 2 – video vẽ đường nối từ lô đất tới)</label>
+        <label>🛣️ Đường gần nhất – bấm để đổi: <b>⭐ chính</b> (tối đa 3, làm nổi bật + vẽ đường nối từ lô đất) → <b>➖ phụ</b> (tối đa 3, vẽ mảnh hơn) → bỏ chọn</label>
         <div id="roadList" class="road-list"><p class="empty">—</p></div>
         <label>🌏 Kết nối vùng – điểm mốc lớn (chọn tối đa 6)</label>
         <div id="lmList" class="road-list"></div>
@@ -154,10 +154,13 @@
           <select id="o_mode"><option value="flyover">Bay theo đường đi (từng điểm)</option><option value="radar">Quét radar (nhanh)</option></select>
         </label>
         <label>Flycam quanh vị trí
-          <select id="o_orbit"><option value="360" selected>Bay 1 vòng 360° (khuyên dùng)</option><option value="0">Không xoay</option></select>
+          <select id="o_orbit"><option value="360" selected>Bay 1 vòng 360° (khuyên dùng)</option><option value="180">Bay nửa vòng 180°</option><option value="90">Lia 90°</option><option value="0">Không xoay</option></select>
         </label>
         <label>Tốc độ video
           <select id="o_pace"><option value="0.8">Nhanh</option><option value="1" selected>Vừa</option><option value="1.25">Chậm</option></select>
+        </label>
+        <label>Bộ màu
+          <select id="o_preset"><option value="">Tuỳ chỉnh – mỗi loại tiện ích một màu</option><option value="gold">✨ Sang trọng đen – vàng</option><option value="modern">🔷 Hiện đại xanh dương</option><option value="neon">⚡ Neon trẻ trung</option></select>
         </label>
         <label>Màu chủ đạo<input type="color" id="o_theme" value="#e11d48"></label>
         <div class="checks">
@@ -190,6 +193,10 @@
           <span id="musicInfo" class="badge"></span>
           <button id="btnClearMusic" class="ghost" hidden>✕</button>
           <label class="inline">Âm lượng nhạc <input type="range" id="musicVol" min="0" max="1" step="0.05" value="0.35"></label>
+        </div>
+        <div class="row wrap">
+          <label class="inline"><input type="checkbox" id="o_bgm" checked> 🎶 Nhạc nền có sẵn (khi chưa tải nhạc)</label>
+          <label class="inline"><input type="checkbox" id="o_sfx" checked> 💥 Hiệu ứng âm thanh (SFX)</label>
         </div>
         <p class="hint">Nhạc nền: chỉ dùng nhạc bạn có quyền sử dụng (VD: YouTube Audio Library, Pixabay Music).</p>
       </div>

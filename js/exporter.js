@@ -1,4 +1,5 @@
 // Xuất MP4 ngay trên thiết bị bằng WebCodecs + mp4-muxer
+import { musicLoop, synthSfx } from './sound.js';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function pickVideoCodec(w, h, fps, bitrate) {
@@ -34,10 +35,31 @@ export function canExport() {
 }
 
 // Trộn giọng đọc + nhạc nền thành 1 AudioBuffer dài đúng thời lượng video
-export async function mixAudio({ voice, music, duration, voiceDelay = 0.5, musicVolume = 0.35, voiceVolume = 1 }) {
-  if (!voice && !music) return null;
+export async function mixAudio({ voice, music, duration, voiceDelay = 0.5, musicVolume = 0.35, voiceVolume = 1, bgm = false, sfx = null }) {
+  if (!voice && !music && !bgm && !sfx) return null;
   const sr = 48000;
   const ctx = new OfflineAudioContext(2, Math.ceil(duration * sr), sr);
+  if (!music && bgm) {
+    // nhạc tự tạo: cùng đường âm lượng / nhỏ lại khi có giọng đọc như nhạc tải lên
+    const g = ctx.createGain();
+    const base = (voice ? musicVolume * 0.55 : musicVolume) * 2.5;
+    g.gain.setValueAtTime(0, 0);
+    g.gain.linearRampToValueAtTime(base, 0.8);
+    g.gain.setValueAtTime(base, Math.max(0.9, duration - 1.8));
+    g.gain.linearRampToValueAtTime(0, duration);
+    g.connect(ctx.destination);
+    const src = ctx.createBufferSource();
+    src.buffer = await musicLoop(sr);
+    src.loop = true;
+    src.connect(g);
+    src.start(0);
+  }
+  if (sfx) {
+    const g = ctx.createGain();
+    g.gain.value = voice ? 0.6 : 0.9;
+    g.connect(ctx.destination);
+    synthSfx(ctx, g, sfx);
+  }
   if (music) {
     const src = ctx.createBufferSource();
     src.buffer = music;

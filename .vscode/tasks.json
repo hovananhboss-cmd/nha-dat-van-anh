@@ -5,10 +5,17 @@
       "label": "Chạy Studio Vị Trí",
       "type": "shell",
       "command": "python3 -m http.server 8000 || python -m http.server 8000",
-      "windows": { "command": "python -m http.server 8000" },
+      "windows": { "command": "python -m http.server 8000; if (-not $?) { npx -y serve -l 8000 . }" },
       "isBackground": true,
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Đồng bộ app vào skill bds-video",
+      "type": "shell",
+      "windows": { "command": "$d='D:\\Claude Edit Video\\AI Edit BDS\\tools\\bds-video\\vitri-app'; Copy-Item index.html $d -Force; robocopy css \"$d\\css\" /MIR /NJH /NJS; robocopy js \"$d\\js\" /MIR /NJH /NJS; if ($LASTEXITCODE -lt 8) { 'Đã chép vào ' + $d; exit 0 }" },
+      "command": "echo 'Chỉ dùng trên Windows'",
+      "problemMatcher": []
     }
   ]
 }

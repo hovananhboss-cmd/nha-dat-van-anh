@@ -1,13 +1,6 @@
-// Lấy dữ liệu miễn phí: OpenStreetMap (Photon + Overpass + ô bản đồ OpenFreeMap), OSRM (đường đi), Valhalla (vùng thời gian), Nominatim (tìm địa chỉ)
-import { haversine, pointToLineDist } from './geo.js';
+// Lấy dữ liệu miễn phí: ô bản đồ OpenFreeMap (chính) + Photon (phụ) + Nominatim (khu công nghiệp, tìm địa chỉ) – OpenStreetMap; OSRM (đường đi), Valhalla (vùng thời gian)
+import { haversine, destPoint } from './geo.js';
 import { scanTiles, fixCategory } from './tiles.js';
-
-const OVERPASS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-];
 
 export const CATS = {
   kinder:     { label: 'Mầm non',               icon: '🧸', color: '#f472b6' },
@@ -20,7 +13,7 @@ export const CATS = {
   mall:       { label: 'Trung tâm thương mại',  icon: '🛍️', color: '#9333ea' },
   bank:       { label: 'Ngân hàng',             icon: '🏦', color: '#0891b2' },
   park:       { label: 'Công viên',             icon: '🌳', color: '#15803d' },
-  admin:      { label: 'UBND - Cơ quan',        icon: '🏛️', color: '#b91c1c' },
+  admin:      { label: 'Hành chính - UBND',     icon: '🏛️', color: '#b91c1c' },
   transport:  { label: 'Bến xe - Ga - Sân bay', icon: '🚉', color: '#0f766e' },
   worship:    { label: 'Chùa - Nhà thờ',        icon: '🛕', color: '#ca8a04' },
   fuel:       { label: 'Cây xăng',              icon: '⛽', color: '#64748b' },
@@ -72,15 +65,10 @@ function withTimeout(ms) {
   return { signal: ctl.signal, done: () => clearTimeout(timer) };
 }
 
-const isIndustrialZone = (name) => /khu công nghiệp|cụm công nghiệp|\bkcn\b|\bccn\b|industrial (park|zone|estate)/i.test(name);
-
 function addPoi(list, seen, center, cat, name, lngLat, id) {
   name = (name || '').trim();
   cat = fixCategory(cat, name);
   if (!cat || !name || !lngLat) return;
-  if (cat === 'industrial' && !isIndustrialZone(name)) return;
-  // Dữ liệu OSM đôi khi gắn nhầm loại (VD: nhà sách gắn là trường học)
-  if ((cat === 'school' || cat === 'kinder') && /nhà sách|cửa hàng|văn phòng phẩm|book ?store|\bshop\b/i.test(name)) return;
   const key = cat + '|' + name.toLowerCase().normalize('NFC');
   if (seen.has(key)) return;
   seen.add(key);
@@ -157,69 +145,25 @@ async function fromPhoton(center, radius) {
   return pois.filter((p) => p.dist <= radius * 1.05);
 }
 
-// ---- Nguồn 2 (bổ sung, nếu kịp): Overpass – thường quá tải nên chỉ chờ tối đa 25 giây ----
-async function overpass(query, totalMs = 25000) {
-  const deadline = Date.now() + totalMs;
-  let lastErr;
-  for (const url of OVERPASS) {
-    const left = deadline - Date.now();
-    if (left < 2000) break;
-    const t = withTimeout(left);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: t.signal,
-      });
-      t.done();
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return await res.json();
-    } catch (e) {
-      t.done();
-      lastErr = e;
-    }
-  }
-  throw new Error('Overpass bận: ' + (lastErr && lastErr.message));
-}
-
-async function fromOverpass(center, radius, roadRadius) {
-  const [lng, lat] = center;
-  const A = `(around:${radius},${lat},${lng})`;
-  const q = `[out:json][timeout:20];
-(
- nwr${A}[amenity~"^(kindergarten|school|university|college|hospital|clinic|marketplace|bank|townhall|bus_station|place_of_worship|fuel)$"][name];
- nwr${A}[shop~"^(supermarket|mall|department_store)$"][name];
- nwr${A}[leisure=park][name];
- nwr${A}[railway=station][name];
- nwr${A}[aeroway=aerodrome][name];
- nwr${A}[landuse=industrial][name];
- nwr${A}[office=government][name];
-);
-out center tags qt;
-way(around:${roadRadius},${lat},${lng})[highway~"^(motorway|trunk|primary|secondary|tertiary)$"][name];
-out geom tags qt;`;
-  const json = await overpass(q);
+// ---- Khu / cụm công nghiệp: ô bản đồ không có tên vùng đất công nghiệp nên tìm theo tên qua Nominatim ----
+async function fromNominatimIndustrial(center, radius) {
+  const ne = destPoint(center, radius * 1.42, 45), sw = destPoint(center, radius * 1.42, 225);
   const pois = [], seen = new Set();
-  const roadsByName = new Map();
-  for (const el of json.elements || []) {
-    const t = el.tags || {};
-    if (el.type === 'way' && el.geometry && t.highway) {
-      addRoad(roadsByName, center, t['name:vi'] || t.name, t.highway, el.geometry.map((g) => [g.lon, g.lat]));
-      continue;
-    }
-    const p = el.type === 'node' ? [el.lon, el.lat] : el.center ? [el.center.lon, el.center.lat] : null;
-    addPoi(pois, seen, center, categorize(t), t['name:vi'] || t.name, p, `${el.type}/${el.id}`);
+  for (const q of ['khu công nghiệp', 'cụm công nghiệp']) {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&accept-language=vi&viewbox=${sw[0]},${ne[1]},${ne[0]},${sw[1]}&q=${encodeURIComponent(q)}`;
+    const t = withTimeout(8000);
+    try {
+      const res = await fetch(url, { signal: t.signal });
+      if (res.ok) {
+        for (const e of await res.json()) {
+          if (e.category !== 'landuse' || e.type !== 'industrial') continue; // bỏ trạm xe buýt, nhà máy nước thải… cùng tên
+          addPoi(pois, seen, center, 'industrial', e.name, [+e.lon, +e.lat], `nominatim/${e.osm_type}${e.osm_id}`);
+        }
+      }
+    } catch (_) {} finally { t.done(); }
+    await sleep(1100); // giới hạn 1 yêu cầu/giây của Nominatim
   }
-  return { pois, roads: roadsByName };
-}
-
-function addRoad(map, center, name, kind, coords) {
-  if (!name || !coords || coords.length < 2) return;
-  const r = map.get(name) || { name, kind, lines: [], dist: Infinity };
-  r.lines.push(coords);
-  r.dist = Math.min(r.dist, pointToLineDist(center, coords));
-  map.set(name, r);
+  return pois.filter((p) => p.dist <= radius * 1.05);
 }
 
 export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500, onStatus = () => {}) {
@@ -229,6 +173,7 @@ export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500
   // Nguồn chính: ô bản đồ OpenFreeMap. Nguồn phụ: Photon (giới hạn 10 giây).
   const tilesP = settle(scanTiles(center, radius, roadRadius, (d, n, k) => onStatus(`Đang đọc bản đồ ${d}/${n} · ${k} tiện ích`)));
   const photonP = settle(Promise.race([fromPhoton(center, radius), sleep(10000).then(() => { throw new Error('Photon quá 10 giây'); })]));
+  const kcnP = fromNominatimIndustrial(center, radius); // không bao giờ lỗi, tối đa ~19 giây
   const tiles = await tilesP;
   // Đã có dữ liệu từ ô bản đồ thì chỉ chờ Photon thêm tối đa 2 giây
   const ph = tiles.status === 'fulfilled'
@@ -240,7 +185,8 @@ export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500
   // Gộp, bỏ trùng theo tên + loại hoặc 2 điểm cùng loại rất gần nhau
   const pois = [];
   const seen = new Set();
-  const all = [...(tiles.status === 'fulfilled' ? tiles.value.pois : []), ...(ph.status === 'fulfilled' ? ph.value : [])];
+  const kcn = await kcnP;
+  const all = [...(tiles.status === 'fulfilled' ? tiles.value.pois : []), ...(ph.status === 'fulfilled' ? ph.value : []), ...kcn];
   for (const p of all) {
     const key = p.cat + '|' + p.name.toLowerCase().normalize('NFC');
     if (seen.has(key)) continue;
@@ -257,9 +203,19 @@ export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500
 const routeCache = new Map();
 let lastRouteAt = 0;
 
-export async function fetchRoute(a, b) {
+let routeQueue = Promise.resolve();
+// Nhớ cả yêu cầu đang chạy (tính sẵn ngầm + lúc dựng không gọi trùng); xếp hàng để giữ 1 yêu cầu/giây
+export function fetchRoute(a, b) {
   const key = `${a[0].toFixed(6)},${a[1].toFixed(6)};${b[0].toFixed(6)},${b[1].toFixed(6)}`;
-  if (routeCache.has(key)) return routeCache.get(key);
+  if (!routeCache.has(key)) {
+    const p = routeQueue.then(() => osrmRoute(a, b, key));
+    routeQueue = p.catch(() => {});
+    routeCache.set(key, p);
+  }
+  return routeCache.get(key);
+}
+
+async function osrmRoute(a, b, key) {
   const wait = 1100 - (Date.now() - lastRouteAt); // tôn trọng giới hạn 1 yêu cầu/giây của máy chủ demo
   if (wait > 0) await sleep(wait);
   lastRouteAt = Date.now();
@@ -276,8 +232,8 @@ export async function fetchRoute(a, b) {
   if (!result) {
     const d = haversine(a, b);
     result = { coords: [a, b], distance: d * 1.3, duration: null, road: false };
+    routeCache.delete(key); // lỗi mạng: lần dựng sau thử lại
   }
-  routeCache.set(key, result);
   return result;
 }
 
