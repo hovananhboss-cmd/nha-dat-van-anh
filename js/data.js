@@ -125,7 +125,8 @@ async function fromPhoton(center, radius) {
       } catch (_) {}
     }
   };
-  await Promise.all([worker(), worker(), worker(), worker()]);
+  // Photon chịu được ~14 truy vấn song song (đo thực tế ~3 giây cho cả 14 nhóm)
+  await Promise.all(Array.from({ length: 7 }, worker));
   if (!ok) throw new Error('Photon không phản hồi');
   return pois.filter((p) => p.dist <= radius * 1.05);
 }
@@ -201,7 +202,13 @@ async function roadsFromTiles(center, roadRadius) {
   div.style.cssText = 'position:fixed;left:-10000px;top:0;width:700px;height:700px;visibility:hidden;';
   document.body.appendChild(div);
   const z = roadRadius > 1200 ? 14 : 14.5;
-  const map = new maplibregl.Map({ container: div, style: 'https://tiles.openfreemap.org/styles/liberty', center, zoom: z, interactive: false, attributionControl: false });
+  // Style tối giản: chỉ tải lớp tên đường, không tải icon/font -> nhanh hơn nhiều
+  const style = {
+    version: 8,
+    sources: { openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } },
+    layers: [{ id: 'names', type: 'line', source: 'openmaptiles', 'source-layer': 'transportation_name', paint: { 'line-opacity': 0 } }],
+  };
+  const map = new maplibregl.Map({ container: div, style, center, zoom: z, interactive: false, attributionControl: false });
   try {
     await new Promise((resolve) => {
       const timer = setTimeout(resolve, 20000);
@@ -229,9 +236,9 @@ export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500
   const settle = (pr) => pr.then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason }));
   const opP = settle(fromOverpass(center, radius, roadRadius));
   const [ph, tiles] = await Promise.all([settle(fromPhoton(center, radius)), settle(roadsFromTiles(center, roadRadius))]);
-  // Overpass hay quá tải: nếu Photon đã có kết quả thì chỉ chờ Overpass thêm tối đa 6 giây
+  // Overpass hay quá tải: nếu Photon đã có kết quả thì gần như không chờ Overpass nữa
   const op = ph.status === 'fulfilled'
-    ? await Promise.race([opP, sleep(6000).then(() => ({ status: 'rejected', reason: new Error('Overpass chậm') }))])
+    ? await Promise.race([opP, sleep(800).then(() => ({ status: 'rejected', reason: new Error('Overpass chậm') }))])
     : await opP;
   if (ph.status === 'rejected' && op.status === 'rejected') {
     throw new Error('Máy chủ dữ liệu tiện ích đang bận, vui lòng thử lại sau ít phút. Bạn vẫn có thể thêm tiện ích bằng tay (➕ Thêm tiện ích).');

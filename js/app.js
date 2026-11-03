@@ -19,7 +19,7 @@ const OUT = {
 const MAX_POI = 10;
 const STORE = 'va-studio-v1';
 const FIELDS = ['f_tag', 'f_price', 'f_title', 'f_address', 'f_area', 'f_size', 'f_rooms', 'f_direction', 'f_legal', 'f_extra', 'f_agent', 'f_phone',
-  'o_aspect', 'o_style', 'o_mode', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
+  'o_aspect', 'o_style', 'o_mode', 'o_orbit', 'o_block', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
 
 const state = {
   center: null,
@@ -500,6 +500,7 @@ async function ensureBuilt() {
   const styleId = val('o_style');
   await stage.setStyle(styleId);
   stage.setTheme(val('o_theme'));
+  stage.plotHeight = val('o_block') ? 18 : 0;
   const plot = state.plot.length >= 3 ? state.plot : null;
   stage.setData('plot', plot ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...plot, plot[0]]] } }] } : null);
   stage.setData('iso', iso ? { type: 'FeatureCollection', features: iso.map((f) => ({ type: 'Feature', properties: { minutes: f.minutes }, geometry: f.geometry })) } : null);
@@ -525,7 +526,7 @@ async function ensureBuilt() {
     credit: MAP_STYLES[styleId].credit,
     opts: {
       theme: val('o_theme'), pace: +val('o_pace'), mode, speedKmh: +val('inSpeed') || 30,
-      showDims: val('o_dims'), subtitles: val('o_subs'), isoLabel, voiceDelay: 0.5,
+      showDims: val('o_dims'), subtitles: val('o_subs'), isoLabel, voiceDelay: 0.5, orbit: +val('o_orbit'),
     },
   });
   mixed = await mixAudio({ voice: state.voice, music: state.music, duration: timeline.duration, voiceDelay: 0.5, musicVolume: +val('musicVol') });
@@ -954,6 +955,7 @@ function bind() {
 }
 
 function afterRestore() {
+  if (!$('o_style').value) $('o_style').value = 'night';
   if (!$('selProvince').value) $('selProvince').value = 'auto';
   $('inLon0').hidden = $('selProvince').value !== 'manual';
   if (state.center) {
