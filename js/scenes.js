@@ -1,5 +1,5 @@
 // Kịch bản chuyển động: mỗi cảnh điều khiển camera bản đồ + lớp đồ hoạ phía trên
-import { bboxOf, haversine, sliceLine, circlePolygon, edgeLengths, fmtDist, polygonArea, fmtArea, nearestOnLine } from './geo.js';
+import { bboxOf, haversine, sliceLine, circlePolygon, edgeLengths, fmtDist, polygonArea, fmtArea, nearestOnLine, lineLength } from './geo.js';
 import { CATS } from './data.js';
 import {
   ease, clamp, seg, font, rrect, wrap, shadow, noShadow, plotMarker, poiPin, poiCard, pill, hexA,
@@ -106,10 +106,10 @@ export function buildTimeline(S) {
       };
 
   map.jumpTo({ padding: NOPAD }); // cameraForBounds cần padding = 0
-  const fit = (coords, pad, maxZoom = 18.4) => {
+  const fit = (coords, pad, maxZoom = 18.4, bearing = 0) => {
     const b = bboxOf(coords);
     if (b[0][0] === b[1][0] && b[0][1] === b[1][1]) return { center: b[0], zoom: Math.min(17, maxZoom) };
-    const c = map.cameraForBounds(b, { padding: pad, maxZoom });
+    const c = map.cameraForBounds(b, { padding: pad, maxZoom, bearing });
     if (!c) return { center: center, zoom: 15 };
     const cc = c.center.toArray ? c.center.toArray() : [c.center.lng, c.center.lat];
     return { center: cc, zoom: c.zoom };
@@ -119,10 +119,64 @@ export function buildTimeline(S) {
   const plotC = plot ? centroidOf(plot) : center;
   const plotCoords = plot || [center];
   const pc = fit(plotCoords, L.plotPad, plot ? 19 : 17.3);
-  const plotPad = { top: L.plotPad.top, bottom: L.plotPad.bottom, left: L.plotPad.left, right: L.plotPad.right };
-  const zPlot = plot ? Math.min(pc.zoom - 0.5, 18.4) : 17.2;
+  // Flycam: lô đất nằm chính giữa màn hình (chừa chỗ cho thẻ thông tin khi tắt Video sạch)
+  const plotPad = S.opts.clean ? { ...NOPAD } : { top: 0, bottom: chh * (landscape ? 0 : 0.26), left: 0, right: landscape ? cw * 0.45 : 0 };
+  const zPlot = plot ? Math.min(pc.zoom - 1.0, 17.9) : 16.7;
   const camPlot = { center: plotC, zoom: zPlot, pitch: 60, bearing: -25, pad: plotPad };
   const camStart = { center: plotC, zoom: Math.max(10, zPlot - 5.5), pitch: 0, bearing: -100, pad: plotPad };
+
+  // ===== Flycam dẫn đường: camera bám theo đầu đường đang vẽ =====
+  const CHASE_PAD = { top: chh * 0.32, bottom: 0, left: 0, right: 0 }; // đầu đường hơi thấp để thấy phía trước
+  const pointAt = (coords, f) => { const part = sliceLine(coords, f); return part[part.length - 1]; };
+  const headingDeg = (a, b) => (Math.atan2((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1]) * 180) / Math.PI;
+  function chase(coords, b0 = 0) {
+    const len = Math.max(1, lineLength(coords));
+    const lat = coords[0][1];
+    const viewM = clamp(len * 0.5, 320, 26000);
+    const zc = Math.log2((78271.517 * Math.cos((lat * Math.PI) / 180) * cw) / viewM);
+    const win = Math.min(0.5, Math.max(150, len * 0.15) / len);
+    // hướng đi = trung bình vector hướng trên một cửa sổ quanh đầu đường -> xoay mượt ở chỗ cua
+    const head = (f) => {
+      let x = 0, y = 0;
+      const K = 6;
+      for (let k = 0; k < K; k++) {
+        const f0 = clamp(f - win + (2 * win * k) / K), f1 = clamp(f - win + (2 * win * (k + 1)) / K);
+        const a = pointAt(coords, f0), b = pointAt(coords, f1);
+        const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (d > 0) { const h = (headingDeg(a, b) * Math.PI) / 180; x += Math.sin(h) * d; y += Math.cos(h) * d; }
+      }
+      return x || y ? (Math.atan2(x, y) * 180) / Math.PI : 0;
+    };
+    // Tính trước hướng camera dọc tuyến rồi làm mượt mạnh -> không bẻ gắt ở góc cua / quay đầu
+    const N = 120;
+    const raw = [];
+    for (let k = 0; k <= N; k++) {
+      let h = head(k / N);
+      if (k) { while (h - raw[k - 1] > 180) h -= 360; while (h - raw[k - 1] < -180) h += 360; } // nối liền góc
+      raw.push(h);
+    }
+    let sm = raw;
+    for (let it = 0; it < 4; it++) {
+      const W = 10;
+      sm = sm.map((_, k) => { let a = 0, c = 0; for (let j = -W; j <= W; j++) { const q = sm[clamp(k + j, 0, N)]; a += q; c++; } return a / c; });
+    }
+    const base = sm[0];
+    // Bắt đầu từ hướng camera hiện tại (b0), chỉ xoay theo 60% mức đổi hướng của đường -> không giật đầu cảnh
+    const bearingAt = (f) => {
+      const x = clamp(f) * N, k = Math.floor(x), t = x - k;
+      const v = k >= N ? sm[N] : sm[k] + (sm[k + 1] - sm[k]) * t;
+      return b0 + (v - base) * 0.6;
+    };
+    return { len, zc, cam: (f) => ({ center: pointAt(coords, f), zoom: zc, pitch: 58, bearing: bearingAt(f), pad: CHASE_PAD }) };
+  }
+  // Ghép 3 pha: tiếp cận → bám theo đầu đường → lùi ra toàn cảnh đường vừa vẽ
+  function chaseCamFn(ch, a0, a1) {
+    return function (p) {
+      if (p < a0) return lerpCam(this.from, ch.cam(0), ease.inOut(p / a0), arcFor(this.from, ch.cam(0), cw) * 0.4);
+      if (p < a1) return ch.cam(ease.inOut((p - a0) / (a1 - a0)));
+      return lerpCam(ch.cam(1), this.to, ease.inOut((p - a1) / (1 - a1)));
+    };
+  }
 
   const scenes = [];
   let cam = camStart;
@@ -232,14 +286,16 @@ export function buildTimeline(S) {
     if (!cn) return;
     const coords = cn.coords.length >= 2 ? cn.coords : [center, cn.point];
     const ctxPts = rd.lines.flat().filter((q) => haversine(q, cn.point) < 450);
-    const fr = fit(coords.concat(ctxPts, [center]), L.fitPad, 18.2);
-    const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 42, bearing: i % 2 ? 12 : -12 };
+    const ch = chase(coords, cam.bearing || 0);
+    const endB = ch.cam(1).bearing;
+    const fr = fit(coords.concat(ctxPts, [center]), L.fitPad, 18.2, endB);
+    const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 42, bearing: endB, pad: NOPAD };
     const sub = cn.distance < 25 ? 'Ngay mặt tiền đường' : routeSub(cn.distance, cn.road);
     add({
-      name: 'road', dur: 3.8, to,
-      cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.5)), arcFor(this.from, this.to, cw) * 0.4); },
+      name: 'road', dur: 4, to,
+      cam: chaseCamFn(ch, 0.18, 0.66),
       ms(p) {
-        const f = ease.inOut(seg(p, 0.3, 0.7));
+        const f = ease.inOut(seg(p, 0.18, 0.66));
         return {
           plot: 1, glow: 0.5, roads: 0.45 + 0.55 * ease.out(seg(p, 0.55, 0.8)),
           routes: { type: 'FeatureCollection', features: f > 0 ? [lineF(sliceLine(coords, f), ROAD_CAT.color, true)] : [] },
@@ -248,7 +304,7 @@ export function buildTimeline(S) {
       },
       draw(ctx, p, lt, E) {
         drawPlotMarker(ctx, E, lt, 1, null);
-        const f = ease.inOut(seg(p, 0.3, 0.7));
+        const f = ease.inOut(seg(p, 0.18, 0.66));
         if (f > 0 && f < 1) drawComet(ctx, E, coords, f, ROAD_CAT.color, lt);
         const [x, y] = E.project(cn.point);
         poiPin(ctx, x, y, E.u, ROAD_CAT, ease.back(seg(p, 0.66, 0.8)));
@@ -305,15 +361,17 @@ export function buildTimeline(S) {
   } else {
     pois.forEach((poi, i) => {
       const coords = poi.route ? poi.route.coords : [center, poi.lngLat];
-      const fp = fit(coords.concat([center, poi.lngLat]), L.fitPad, 17.6);
-      const to = { ...fp, zoom: fp.zoom - 0.15, pitch: 38, bearing: i % 2 ? 8 : -8 };
+      const ch = chase(coords, cam.bearing || 0);
+      const endB = ch.cam(1).bearing;
+      const fp = fit(coords.concat([center, poi.lngLat]), L.fitPad, 17.6, endB);
+      const to = { ...fp, zoom: fp.zoom - 0.15, pitch: 40, bearing: endB, pad: NOPAD };
       const color = CATS[poi.cat].color;
       const prev = doneRoutes.slice();
       add({
-        name: 'poi', dur: 3.3, to,
-        cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.42)), arcFor(this.from, this.to, cw) * 0.5); },
+        name: 'poi', dur: 3.4 + clamp(ch.len / 700, 0.4, 2.2), to,
+        cam: chaseCamFn(ch, 0.14, 0.72),
         ms(p) {
-          const f = ease.inOut(seg(p, 0.2, 0.72));
+          const f = ease.inOut(seg(p, 0.14, 0.72));
           const q = Math.round(f * 300);
           const features = prev.map((r) => lineF(r.coords, r.color, false));
           if (f > 0) features.push(lineF(sliceLine(coords, f), color, true));
@@ -322,12 +380,12 @@ export function buildTimeline(S) {
         draw(ctx, p, lt, E) {
           drawPlotMarker(ctx, E, lt, 1, null);
           for (const d of prev) { const [x, y] = E.project(d.poi.lngLat); poiPin(ctx, x, y, E.u, CATS[d.poi.cat], 0.6); }
-          const fr = ease.inOut(seg(p, 0.2, 0.72));
+          const fr = ease.inOut(seg(p, 0.14, 0.72));
           if (fr > 0 && fr < 1) drawComet(ctx, E, coords, fr, color, lt);
-          const pop = ease.back(seg(p, 0.66, 0.8));
+          const pop = ease.back(seg(p, 0.7, 0.82));
           const [x, y] = E.project(poi.lngLat);
           poiPin(ctx, x, y, E.u, CATS[poi.cat], pop);
-          poiCard(ctx, x, y, E.u, CATS[poi.cat], poi.name, poiSub(poi, speed), ease.out(seg(p, 0.7, 0.84)), { bounds: E.safe, place: y < E.H * 0.3 ? 'bottom' : 'top' });
+          poiCard(ctx, x, y, E.u, CATS[poi.cat], poi.name, poiSub(poi, speed), ease.out(seg(p, 0.74, 0.88)), { bounds: E.safe, place: y < E.H * 0.3 ? 'bottom' : 'top' });
           drawHeader(ctx, E, `${CATS[poi.cat].icon} ${CATS[poi.cat].label.toUpperCase()}`, `${i + 1}/${pois.length}`, 1, true);
         },
       });
@@ -357,41 +415,53 @@ export function buildTimeline(S) {
     });
   }
 
-  // 5b. Kết nối vùng: đường đi tới các điểm mốc lớn
+  // 5b. Kết nối vùng: vẽ lần lượt từng điểm mốc, camera bay theo, rồi cảnh tổng
   const lms = S.landmarks || [];
   if (lms.length) {
-    const all = [center];
-    lms.forEach((l) => { all.push(l.lngLat); if (l.route) all.push(...l.route.coords.filter((_, k) => k % 8 === 0)); });
-    const fr = fit(all, L.fitPad, 15);
-    const to = { ...fr, zoom: fr.zoom - 0.15, pitch: 30, bearing: 0 };
-    const to2 = { ...to, zoom: to.zoom + 0.12, bearing: 10 };
-    const n = lms.length;
-    const fOf = (p, i) => ease.inOut(seg(p, 0.24 + i * (0.54 / n), 0.24 + i * (0.54 / n) + 0.26));
     const lcoords = lms.map((l) => (l.route ? l.route.coords : [center, l.lngLat]));
+    const lmItem = (l, a) => ({ lngLat: l.lngLat, title: l.short || l.name, sub: landmarkSub(l), cat: { color: l.color, icon: l.icon }, a });
+    lms.forEach((l, i) => {
+      const coords = lcoords[i];
+      const ch = chase(coords, cam.bearing || 0);
+      const endB = ch.cam(1).bearing;
+      const fr = fit(coords.concat([center]), L.fitPad, 16, endB);
+      const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 35, bearing: endB, pad: NOPAD };
+      add({
+        name: 'region', dur: 3.6 + clamp(ch.len / 12000, 0.6, 2.4), to,
+        cam: chaseCamFn(ch, 0.24, 0.72),
+        ms(p) {
+          const f = ease.inOut(seg(p, 0.24, 0.72));
+          const features = lms.slice(0, i).map((x, k) => lineF(lcoords[k], x.color, false));
+          if (f > 0) features.push(lineF(sliceLine(coords, f), l.color, true));
+          return { plot: 1, glow: 0.7, roads: 0.3, routes: { type: 'FeatureCollection', features }, routesKey: `lm${i}-${Math.round(f * 300)}` };
+        },
+        draw(ctx, p, lt, E) {
+          drawPlotMarker(ctx, E, lt, 1, null);
+          const f = ease.inOut(seg(p, 0.24, 0.72));
+          if (f > 0 && f < 1) drawComet(ctx, E, coords, f, l.color, lt);
+          drawLabeled(ctx, E, [lmItem(l, ease.out(seg(p, 0.74, 0.88)))], 1);
+          drawHeader(ctx, E, '🌏 KẾT NỐI VÙNG', `${i + 1}/${lms.length}`, 1, true);
+        },
+      });
+    });
+    // Cảnh tổng: tất cả điểm mốc
+    const all = [center];
+    lms.forEach((l, i) => { all.push(l.lngLat); all.push(...lcoords[i].filter((_, k) => k % 8 === 0)); });
+    const fa = fit(all, L.fitPad, 15);
+    const to = { ...fa, zoom: fa.zoom - 0.15, pitch: 30, bearing: 0, pad: NOPAD };
+    const to2 = { ...to, zoom: to.zoom + 0.12, bearing: 10 };
+    const allRoutes = { type: 'FeatureCollection', features: lms.map((l, i) => lineF(lcoords[i], l.color, false)) };
     add({
-      name: 'region', dur: 3.4 + n * 1.25, to: to2,
+      name: 'region-all', dur: 3.6, to: to2,
       cam(p) {
-        if (p < 0.24) return lerpCam(this.from, to, ease.inOut(p / 0.24), arcFor(this.from, to, cw) * 0.3);
-        return lerpCam(to, to2, (p - 0.24) / 0.76);
+        if (p < 0.35) return lerpCam(this.from, to, ease.inOut(p / 0.35), arcFor(this.from, to, cw) * 0.3);
+        return lerpCam(to, to2, (p - 0.35) / 0.65);
       },
-      ms(p) {
-        const features = [];
-        let key = 'reg';
-        lms.forEach((l, i) => {
-          const f = fOf(p, i);
-          key += ',' + Math.round(f * 160);
-          if (f > 0) features.push(lineF(f >= 1 ? lcoords[i] : sliceLine(lcoords[i], f), l.color, f < 1));
-        });
-        return { plot: 1, glow: 0.7, roads: 0.3, routes: { type: 'FeatureCollection', features }, routesKey: key };
-      },
+      ms() { return { plot: 1, glow: 0.7, roads: 0.3, routes: allRoutes, routesKey: 'lm-all' }; },
       draw(ctx, p, lt, E) {
         drawPlotMarker(ctx, E, lt, 1, null);
-        lms.forEach((l, i) => { const f = fOf(p, i); if (f > 0 && f < 1) drawComet(ctx, E, lcoords[i], f, l.color, lt); });
-        drawLabeled(ctx, E, lms.map((l, i) => ({
-          lngLat: l.lngLat, title: l.short || l.name, sub: landmarkSub(l), cat: { color: l.color, icon: l.icon },
-          a: ease.out(seg(fOf(p, i), 0.92, 1)),
-        })), 0.92);
-        drawHeader(ctx, E, '🌏 KẾT NỐI VÙNG', `${n} điểm mốc quan trọng`, ease.out(seg(p, 0.05, 0.2)));
+        drawLabeled(ctx, E, lms.map((l, i) => lmItem(l, ease.out(seg(p, 0.25 + i * 0.05, 0.4 + i * 0.05)))), 0.92);
+        drawHeader(ctx, E, '🌏 KẾT NỐI VÙNG', `${lms.length} điểm mốc quan trọng`, ease.out(seg(p, 0.05, 0.2)));
       },
     });
   }
@@ -770,7 +840,7 @@ export function buildTimeline(S) {
     g.fillStyle = '#ffffff';
     g.textAlign = 'left';
     g.textBaseline = 'middle';
-    g.fillText('THÔNG TIN LÔ ĐẤT', pad + 24 * u, 44 * u);
+    g.fillText('THÔNG TIN BẤT ĐỘNG SẢN', pad + 24 * u, 44 * u);
     g.fillStyle = 'rgba(255,255,255,.16)';
     g.fillRect(pad, head - 6 * u, W - 2 * pad, 2 * u);
     lotRows.forEach(([ic, label, value], i) => {
