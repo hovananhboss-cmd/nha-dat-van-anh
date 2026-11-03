@@ -42,6 +42,8 @@ Video gồm các cảnh: camera lao thẳng từ trên cao xuống lô đất �
 2. Trên GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 3. Đợi tác vụ “Đăng Studio Vị Trí lên GitHub Pages” chạy xong (tab **Actions**). Trang sẽ có địa chỉ dạng `https://<tên-tài-khoản>.github.io/nha-dat-van-anh/`.
 
+Làm tiếp trên máy tính bằng VS Code: xem **[HUONG-DAN-VS-CODE.md](HUONG-DAN-VS-CODE.md)**.
+
 Chạy thử trên máy: trong thư mục dự án, chạy `python3 -m http.server 8000` rồi mở `http://localhost:8000`.
 
 ## Công nghệ & nguồn dữ liệu (đều miễn phí)

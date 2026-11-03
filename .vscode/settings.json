@@ -1,0 +1,6 @@
+{
+  "liveServer.settings.port": 8000,
+  "files.encoding": "utf8",
+  "editor.tabSize": 2,
+  "files.exclude": { "**/.DS_Store": true }
+}
