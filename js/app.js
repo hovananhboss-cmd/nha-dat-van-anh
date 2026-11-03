@@ -314,9 +314,10 @@ async function scan() {
   if (!state.center) return toast('Hãy xác định vị trí ở bước 1 trước.', true);
   const btn = $('btnScan');
   btn.disabled = true;
-  btn.textContent = '⏳ Đang quét…';
+  btn.textContent = '⏳ Đang quét… (tối đa ~30 giây)';
   try {
-    const res = await fetchSurroundings(origin(), +val('selRadius'));
+    const radius = +val('selRadius');
+    const res = await fetchSurroundings(origin(), radius, Math.min(2000, Math.max(1000, radius / 2)));
     const keep = new Set(state.selected);
     state.pois = res.pois.slice(0, 600);
     state.roads = res.roads;
@@ -324,7 +325,8 @@ async function scan() {
     state.roadSel = state.roadSel.filter((n) => state.roads.some((r) => r.name === n));
     if (!keep.size || !state.selected.length) autoPick();
     renderPoiList(); renderRoads(); refreshEditor();
-    toast(`Tìm thấy ${res.pois.length} tiện ích và ${res.roads.length} tuyến đường. Đã gợi ý sẵn – bạn chỉnh lại tuỳ ý.`);
+    if (!res.pois.length) toast('Không tìm thấy tiện ích nào trong bán kính này. Thử tăng bán kính, hoặc thêm bằng tay (➕ Thêm tiện ích).', true, 7000);
+    else toast(`Tìm thấy ${res.pois.length} tiện ích và ${res.roads.length} tuyến đường (nguồn: ${res.sources.join(' + ')}). Đã gợi ý sẵn – bạn chỉnh lại tuỳ ý.`, false, 6000);
     markDirty(); save();
   } catch (e) {
     toast(e.message || String(e), true, 6000);
