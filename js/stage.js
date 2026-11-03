@@ -3,9 +3,9 @@ import { CUSTOM_STYLES, ARTISTIC_THEMES } from './mapstyles.js';
 const OFM = 'https://tiles.openfreemap.org/styles/';
 
 export const MAP_STYLES = {
-  night: { label: '🌙 Đêm sang trọng (khuyên dùng)', custom: 'night', credit: '© OpenStreetMap · OpenFreeMap' },
+  satellite: { label: '🛰️ Vệ tinh + tên đường (khuyên dùng)', custom: 'satellite', credit: 'Ảnh vệ tinh © Esri, Maxar · © OpenStreetMap' },
+  night: { label: '🌙 Đêm sang trọng', custom: 'night', credit: '© OpenStreetMap · OpenFreeMap' },
   day: { label: '☀️ Ngày hiện đại', custom: 'day', credit: '© OpenStreetMap · OpenFreeMap' },
-  satellite: { label: '🛰️ Vệ tinh + tên đường', custom: 'satellite', credit: 'Ảnh vệ tinh © Esri, Maxar · © OpenStreetMap' },
   satellite_plain: { label: '🛰️ Vệ tinh (không chữ)', custom: 'satellite_plain', credit: 'Ảnh vệ tinh © Esri, Maxar' },
   liberty: { label: 'Đường phố cổ điển', url: OFM + 'liberty', credit: '© OpenStreetMap · OpenFreeMap' },
   positron: { label: 'Tối giản xám', url: OFM + 'positron', credit: '© OpenStreetMap · OpenFreeMap' },
@@ -16,7 +16,7 @@ for (const [k, t] of Object.entries(ARTISTIC_THEMES)) {
 }
 
 export function styleFor(id) {
-  const s = MAP_STYLES[id] || MAP_STYLES.night;
+  const s = MAP_STYLES[id] || MAP_STYLES.satellite;
   return s.custom ? CUSTOM_STYLES[s.custom]() : s.url;
 }
 

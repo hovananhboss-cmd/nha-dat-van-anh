@@ -2,7 +2,6 @@ import {
   parseLatLng, isShortGoogleLink, parseCornerRows, vn2000ToWgs84, autoMeridian, parseLon0, fmtMeridian, MERIDIANS,
   isSelfIntersecting, sortAroundCentroid, edgeLengths, PROVINCES, polygonArea, fmtArea, fmtDist, circlePolygon, centroid, haversine, bboxOf, nearestOnLine,
 } from './geo.js';
-import { ocrCoordinates } from './ocr.js';
 import { LANDMARKS, INFRA_LIST, infraNearest } from './regional.js';
 import { CATS, fetchSurroundings, fetchRoute, fetchIsochrones, geocode, unshortenMapsLink } from './data.js';
 import { Stage, MAP_STYLES, styleFor } from './stage.js';
@@ -74,7 +73,7 @@ function snapshot() {
   const f = {};
   for (const id of FIELDS) f[id] = val(id);
   return {
-    v: 1,
+    v: 2,
     center: state.center, plot: state.plot, pois: state.pois.slice(0, 500).map(stripRoute), custom: state.custom.map(stripRoute),
     selected: state.selected, roads: state.roads.map(({ connector, ...r }) => r), roadSel: state.roadSel, plotAreaExact: state.plotAreaExact || 0, plotEdgesExact: state.plotEdgesExact || null,
     lmSel: state.lmSel, lmCustom: state.lmCustom.map(stripRoute), infraSel: state.infraSel, fields: f,
@@ -91,7 +90,9 @@ function restore(data) {
     selected: data.selected || [], roads: data.roads || [], roadSel: data.roadSel || [], plotAreaExact: data.plotAreaExact || 0, plotEdgesExact: data.plotEdgesExact || null,
     lmSel: data.lmSel || state.lmSel, lmCustom: data.lmCustom || [], infraSel: data.infraSel || state.infraSel,
   });
-  for (const [id, v] of Object.entries(data.fields || {})) {
+  const fields = { ...(data.fields || {}) };
+  if ((data.v || 1) < 2) { fields.o_style = 'satellite'; fields.o_orbit = '360'; } // mặc định mới: vệ tinh + tên đường, bay 1 vòng
+  for (const [id, v] of Object.entries(fields)) {
     const el = $(id);
     if (!el) continue;
     if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
@@ -224,7 +225,7 @@ function setEditMode(m) {
 }
 
 // ---------- tiện ích ----------
-const PRIORITY = ['school', 'hospital', 'market', 'supermarket', 'mall', 'park', 'university', 'kinder', 'admin', 'transport', 'bank', 'clinic', 'industrial', 'worship', 'fuel'];
+const PRIORITY = ['school', 'hospital', 'market', 'supermarket', 'mall', 'park', 'university', 'kinder', 'admin', 'transport', 'pharmacy', 'bank', 'sports', 'entertain', 'clinic', 'industrial', 'worship', 'fuel', 'post', 'police', 'convenience', 'hotel', 'food'];
 
 function autoPick() {
   const picked = [];
@@ -955,32 +956,6 @@ function bind() {
   $('inCorners').addEventListener('input', resetCornerPreview);
   $('btnReadCorners').onclick = readCorners;
   $('btnCorners').onclick = applyCorners;
-  $('fileOcr').onchange = async (e) => {
-    const f = e.target.files[0];
-    e.target.value = '';
-    if (!f) return;
-    const st = $('ocrStatus');
-    const btn = $('fileOcr').parentElement;
-    btn.style.pointerEvents = 'none';
-    btn.style.opacity = '.6';
-    try {
-      const { rows } = await ocrCoordinates(f, (m) => (st.textContent = m));
-      if (rows.length < 3) {
-        st.textContent = `Chỉ đọc được ${rows.length} dòng toạ độ. Hãy chụp lại gần hơn, thẳng và đủ sáng – hoặc gõ tay vào ô bên dưới.`;
-        if (rows.length) $('inCorners').value = rows.join('\n');
-        return;
-      }
-      $('inCorners').value = rows.join('\n');
-      st.textContent = `✅ Đã đọc ${rows.length} điểm. Hãy so từng số với sổ rồi bấm “Đọc toạ độ”.`;
-      save();
-      readCorners();
-    } catch (err) {
-      st.textContent = '⚠️ ' + (err.message || err);
-    } finally {
-      btn.style.pointerEvents = '';
-      btn.style.opacity = '';
-    }
-  };
   $('btnScan').onclick = scan;
   $('btnLmAdd').onclick = async () => {
     const q = $('lmSearch').value.trim();
@@ -1090,7 +1065,8 @@ function bind() {
 }
 
 function afterRestore() {
-  if (!$('o_style').value) $('o_style').value = 'night';
+  if (!$('o_style').value) $('o_style').value = 'satellite';
+  if (!$('o_orbit').value) $('o_orbit').value = '360';
   if (!$('selProvince').value) $('selProvince').value = 'auto';
   $('inLon0').hidden = $('selProvince').value !== 'manual';
   if (state.center) {

@@ -38,6 +38,11 @@ const SUB = {
   marketplace: 'market', supermarket: 'supermarket', mall: 'mall', department_store: 'mall',
   bank: 'bank', park: 'park', townhall: 'admin', bus_station: 'transport',
   place_of_worship: 'worship', fuel: 'fuel',
+  pharmacy: 'pharmacy', chemist: 'pharmacy',
+  sports_centre: 'sports', fitness_centre: 'sports', stadium: 'sports', swimming_pool: 'sports',
+  cinema: 'entertain', theatre: 'entertain', water_park: 'entertain',
+  police: 'police', post_office: 'post', convenience: 'convenience',
+  cafe: 'food', restaurant: 'food', hotel: 'hotel',
 };
 
 // Sửa các nhãn OSM hay bị gắn nhầm ở Việt Nam. Trả về null để bỏ điểm.
