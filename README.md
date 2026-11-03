@@ -18,7 +18,7 @@ Công cụ tạo **video giới thiệu vị trí lô đất / căn nhà và ti�
 | Video sạch | Bật mặc định: video **chỉ hiện lô đất, diện tích và tiện ích** – không tiêu đề, giá, “liên hệ xem nhà”, số điện thoại hay phụ đề. Bỏ chọn ở bước 4 nếu muốn hiện đầy đủ. |
 | 6. Xuất | Xem trước, tua · xuất MP4 · tải ảnh bìa · lưu / mở dự án (file .json) |
 
-Video gồm các cảnh: camera lao thẳng từ trên cao xuống lô đất → zoom sát, lô đất phát sáng và hiện **diện tích** (lấy đúng số tính từ toạ độ sổ đỏ) → flycam bay vòng quanh lô đất (khối 3D phát sáng) → đường nối tới đường chính → đường dẫn neon phát sáng tới từng tiện ích → toàn cảnh → kết nối vùng tới các điểm mốc lớn → hạ tầng đang thi công → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
+Video gồm các cảnh: camera lao thẳng từ trên cao xuống lô đất → zoom sát, lô đất phát sáng (hào quang, sóng sáng lan, chấm sáng góc), ghi **chiều dài từng cạnh** và thẻ **THÔNG TIN LÔ ĐẤT 3D** lật xoay (diện tích, ngang × dài, hướng, pháp lý – lấy đúng số tính từ toạ độ sổ đỏ) → flycam bay vòng quanh lô đất (khối 3D phát sáng) → đường nối tới đường chính → đường dẫn neon phát sáng tới từng tiện ích → toàn cảnh → kết nối vùng tới các điểm mốc lớn → hạ tầng đang thi công → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
 
 ## Cách dùng
 
