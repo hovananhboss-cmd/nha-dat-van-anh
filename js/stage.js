@@ -91,6 +91,7 @@ export class Stage {
       paint: { 'line-color': '#ffffff', 'line-width': ['case', ['get', 'active'], 11, 7], 'line-opacity': ['case', ['get', 'active'], 1, 0.7] } });
     m.addLayer({ id: 'va-route', type: 'line', source: 'va-routes', layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'active'], 6.5, 3.5], 'line-opacity': ['case', ['get', 'active'], 1, 0.7] } });
+    m.addLayer({ id: 'va-plot-halo', type: 'line', source: 'va-plot', paint: { 'line-color': th, 'line-width': 40, 'line-blur': 30, 'line-opacity': 0 } });
     m.addLayer({ id: 'va-plot-fill', type: 'fill', source: 'va-plot', paint: { 'fill-color': th, 'fill-opacity': 0.35 } });
     m.addLayer({ id: 'va-plot-glow', type: 'line', source: 'va-plot', paint: { 'line-color': th, 'line-width': 12, 'line-blur': 6, 'line-opacity': 0.6 } });
     m.addLayer({ id: 'va-plot-line', type: 'line', source: 'va-plot', paint: { 'line-color': '#ffffff', 'line-width': 3.5 } });
@@ -105,6 +106,7 @@ export class Stage {
     if (!m || !m.getLayer('va-plot-fill')) return;
     m.setPaintProperty('va-plot-fill', 'fill-color', color);
     m.setPaintProperty('va-plot-glow', 'line-color', color);
+    m.setPaintProperty('va-plot-halo', 'line-color', color);
     m.setPaintProperty('va-radar-fill', 'fill-color', color);
     m.setPaintProperty('va-radar-line', 'line-color', color);
     m.setPaintProperty('va-plot-3d', 'fill-extrusion-color', color);
@@ -127,8 +129,13 @@ export class Stage {
   apply(ms) {
     // ms: trạng thái lớp bản đồ cho khung hình hiện tại
     const pf = ms.plot ?? 1;
-    this.paint('va-plot-fill', 'fill-opacity', 0.18 + 0.32 * pf);
     this.paint('va-plot-glow', 'line-opacity', 0.25 + 0.6 * pf);
+    // Hào quang phát sáng quanh lô đất
+    const g = ms.glow ?? 0.35;
+    this.paint('va-plot-halo', 'line-opacity', 0.25 + 0.6 * g);
+    this.paint('va-plot-halo', 'line-width', 22 + 30 * g);
+    this.paint('va-plot-glow', 'line-width', 8 + 10 * g);
+    this.paint('va-plot-fill', 'fill-opacity', 0.25 + 0.3 * Math.max(pf, g));
     const h3 = (ms.plot3d ?? 1) * this.plotHeight;
     this.paint('va-plot-3d', 'fill-extrusion-height', Math.round(h3 * 10) / 10);
     for (const mins of [5, 10, 15]) {

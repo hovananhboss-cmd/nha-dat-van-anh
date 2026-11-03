@@ -15,9 +15,10 @@ Công cụ tạo **video giới thiệu vị trí lô đất / căn nhà và ti�
 | 3. Thông tin | Giá, diện tích, kích thước, kết cấu, hướng, pháp lý, điểm nổi bật, tên + SĐT môi giới · tối đa 6 ảnh + 3 video ngắn |
 | 4. Kiểu video | **36 mẫu bản đồ**: 3 mẫu tự thiết kế (**🌙 Đêm sang trọng**, **☀️ Ngày hiện đại**, **🛰️ Vệ tinh + tên đường**), 32 theme nghệ thuật (Dark Gold, Midnight Neon, Blueprint, Arctic Frost, Paper Heritage…) và các mẫu cổ điển · **flycam bay quanh vị trí** 360° / 180° / 90° · **khối 3D phát sáng** đánh dấu lô đất · bay theo đường đi tới từng tiện ích hoặc quét radar · màu chủ đạo · tốc độ |
 | 5. Kịch bản & âm thanh | Tự viết kịch bản theo 4 giọng văn · **thu âm giọng đọc ngay trong app** hoặc tải file giọng AI (Vbee, FPT.AI, CapCut…) · nhạc nền · **phụ đề tự động** · video tự kéo dài theo giọng đọc |
+| Video sạch | Bật mặc định: video **chỉ hiện lô đất, diện tích và tiện ích** – không tiêu đề, giá, “liên hệ xem nhà”, số điện thoại hay phụ đề. Bỏ chọn ở bước 4 nếu muốn hiện đầy đủ. |
 | 6. Xuất | Xem trước, tua · xuất MP4 · tải ảnh bìa · lưu / mở dự án (file .json) |
 
-Video gồm các cảnh: camera lao từ trên cao xuống vị trí → flycam bay vòng quanh lô đất (khối 3D phát sáng) kèm thẻ thông tin → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
+Video gồm các cảnh: camera lao thẳng từ trên cao xuống lô đất → zoom sát, lô đất phát sáng và hiện **diện tích** (lấy đúng số tính từ toạ độ sổ đỏ) → flycam bay vòng quanh lô đất (khối 3D phát sáng) → vùng thời gian di chuyển → lần lượt từng tiện ích (vẽ đường đi, hiện khoảng cách và số phút) → toàn cảnh tất cả tiện ích → ảnh/video thực tế → màn hình liên hệ.
 
 ## Cách dùng
 

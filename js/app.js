@@ -19,7 +19,7 @@ const OUT = {
 const MAX_POI = 10;
 const STORE = 'va-studio-v1';
 const FIELDS = ['f_tag', 'f_price', 'f_title', 'f_address', 'f_area', 'f_size', 'f_rooms', 'f_direction', 'f_legal', 'f_extra', 'f_agent', 'f_phone',
-  'o_aspect', 'o_style', 'o_mode', 'o_orbit', 'o_block', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
+  'o_aspect', 'o_style', 'o_mode', 'o_orbit', 'o_block', 'o_clean', 'o_pace', 'o_theme', 'o_dims', 'o_subs', 'selRadius', 'chkIso', 'selIsoMode', 'inSpeed', 'selTone', 'inScript', 'musicVol', 'selRes', 'selProvince', 'inLon0', 'inCorners'];
 
 const state = {
   center: null,
@@ -72,7 +72,7 @@ function snapshot() {
   return {
     v: 1,
     center: state.center, plot: state.plot, pois: state.pois.slice(0, 500).map(stripRoute), custom: state.custom.map(stripRoute),
-    selected: state.selected, roads: state.roads, roadSel: state.roadSel, fields: f,
+    selected: state.selected, roads: state.roads, roadSel: state.roadSel, plotAreaExact: state.plotAreaExact || 0, fields: f,
   };
 }
 function stripRoute(p) { const { route, routeFrom, ...rest } = p; return rest; }
@@ -83,7 +83,7 @@ function restore(data) {
   if (!data) return;
   Object.assign(state, {
     center: data.center || null, plot: data.plot || [], pois: data.pois || [], custom: data.custom || [],
-    selected: data.selected || [], roads: data.roads || [], roadSel: data.roadSel || [],
+    selected: data.selected || [], roads: data.roads || [], roadSel: data.roadSel || [], plotAreaExact: data.plotAreaExact || 0,
   });
   for (const [id, v] of Object.entries(data.fields || {})) {
     const el = $(id);
@@ -187,6 +187,7 @@ function onEditorClick(e) {
 }
 
 function afterPlotChange() {
+  state.plotAreaExact = 0;
   for (const p of allPois()) p.route = null;
   refreshEditor();
   markDirty(); save();
@@ -524,9 +525,10 @@ async function ensureBuilt() {
     script: val('inScript'),
     voiceDuration: state.voice ? state.voice.duration : 0,
     credit: MAP_STYLES[styleId].credit,
+    plotArea: state.plotAreaExact || 0,
     opts: {
       theme: val('o_theme'), pace: +val('o_pace'), mode, speedKmh: +val('inSpeed') || 30,
-      showDims: val('o_dims'), subtitles: val('o_subs'), isoLabel, voiceDelay: 0.5, orbit: +val('o_orbit'),
+      showDims: val('o_dims'), subtitles: val('o_subs'), isoLabel, voiceDelay: 0.5, orbit: +val('o_orbit'), clean: val('o_clean'),
     },
   });
   mixed = await mixAudio({ voice: state.voice, music: state.music, duration: timeline.duration, voiceDelay: 0.5, musicVolume: +val('musicVol') });
@@ -666,6 +668,7 @@ function slug(s) {
 
 // ---------- toạ độ sổ đỏ VN-2000 ----------
 let cornerResult = null;
+let cornerArea = 0;
 
 function resetCornerPreview() {
   cornerResult = null;
@@ -742,6 +745,7 @@ function readCorners() {
     <p><b>${points.length} điểm · ${sysLabel}</b> · Diện tích: <b>${fmtArea(area)}</b> <span class="hint">(so với diện tích trên sổ)</span></p>
     <table><thead><tr><th>#</th><th>${srcRows ? 'X' : 'Vĩ độ'}</th><th>${srcRows ? 'Y' : 'Kinh độ'}</th><th>Cạnh tới điểm sau</th></tr></thead><tbody>${rows}</tbody></table>`;
   cornerResult = points;
+  cornerArea = srcRows ? area : 0;
   $('btnCorners').disabled = false;
   setPreviewPlot(points);
   const b = bboxOf(points);
@@ -755,11 +759,14 @@ function fmtNum(n) {
 function applyCorners() {
   if (!cornerResult) return;
   const points = cornerResult;
+  const exact = cornerArea;
   state.plot = points;
   const c = centroid(points);
   if (!state.center || haversine(state.center, c) > 30) setCenter(c, false);
   resetCornerPreview();
   afterPlotChange();
+  state.plotAreaExact = exact; // diện tích tính từ X,Y của sổ (khớp số trên sổ)
+  save();
   editor.fitBounds(bboxOf(points), { padding: 70, maxZoom: 19.5 });
   toast(`Đã vẽ ranh lô đất ${points.length} góc · ${fmtArea(polygonArea(points))}. Chuyển sang “Vệ tinh” để kiểm tra; lệch thì dùng nút “Dịch ranh”.`, false, 7000);
 }
@@ -841,7 +848,10 @@ function bind() {
     const lat = state.plot[0][1];
     const mx = 1 / (111320 * Math.cos((lat * Math.PI) / 180)), my = 1 / 110574;
     state.plot = state.plot.map(([x, y]) => [x + dx * mx, y + dy * my]);
+    const keep = state.plotAreaExact; // dịch ranh không đổi diện tích
     afterPlotChange();
+    state.plotAreaExact = keep;
+    save();
   };
   $('selProvince').onchange = () => { $('inLon0').hidden = $('selProvince').value !== 'manual'; resetCornerPreview(); save(); };
   $('inLon0').oninput = resetCornerPreview;
