@@ -18,8 +18,16 @@ function lerpPad(a = NOPAD, b = NOPAD, p) {
 
 function lerpCam(a, b, p, arc = 0) {
   const db = ((((b.bearing - a.bearing) % 360) + 540) % 360) - 180;
+  // Tâm khung hình đi theo tỉ lệ zoom (giống flyTo): khi zoom mạnh, điểm đích luôn ở trong khung
+  const dz = b.zoom - a.zoom;
+  let c = p;
+  if (Math.abs(dz) > 0.5) {
+    const zl = a.zoom + dz * p;
+    const w0 = Math.pow(2, -a.zoom), w1 = Math.pow(2, -b.zoom), w = Math.pow(2, -zl);
+    c = clamp((w0 - w) / (w0 - w1));
+  }
   return {
-    center: [a.center[0] + (b.center[0] - a.center[0]) * p, a.center[1] + (b.center[1] - a.center[1]) * p],
+    center: [a.center[0] + (b.center[0] - a.center[0]) * c, a.center[1] + (b.center[1] - a.center[1]) * c],
     zoom: a.zoom + (b.zoom - a.zoom) * p - arc * Math.sin(Math.PI * p),
     pitch: a.pitch + (b.pitch - a.pitch) * p,
     bearing: a.bearing + db * p,
@@ -130,6 +138,21 @@ export function buildTimeline(S) {
   const clean = !!S.opts.clean; // video sạch: không tiêu đề, giá, liên hệ, phụ đề
   const areaM2 = S.plotArea || (plot ? polygonArea(plot) : 0);
   const areaText = areaM2 ? fmtArea(areaM2) : (info.area || '');
+  // Chiều dài các cạnh: ưu tiên số tính từ X,Y sổ đỏ (khớp số trên sổ)
+  const lens = plot ? (S.plotEdges && S.plotEdges.length === plot.length ? S.plotEdges : edgeLengths(plot)) : [];
+  const fmtM = (m) => (Math.round(m * 100) / 100).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' m';
+  let dimsText = info.size || '';
+  if (!dimsText && lens.length === 4) {
+    const a = (lens[0] + lens[2]) / 2, b = (lens[1] + lens[3]) / 2;
+    dimsText = `${fmtM(Math.min(a, b))} × ${fmtM(Math.max(a, b))}`;
+  }
+  const lotRows = [
+    ['📐', 'Diện tích', areaText],
+    ['↔️', 'Ngang × Dài', dimsText],
+    ['🧭', 'Hướng', info.direction],
+    ['📜', 'Pháp lý', info.legal],
+    ...(clean ? [] : [['💰', 'Giá', info.price]]),
+  ].filter((r) => r[2]);
 
   // Camera nhìn thẳng xuống lô đất (zoom sát để thấy rõ ranh và diện tích)
   const hasLot = !!(plot || areaText);
@@ -150,12 +173,20 @@ export function buildTimeline(S) {
   // 1b. Giữ khung nhìn thẳng xuống: lô đất phát sáng + hiện diện tích lớn
   if (hasLot) {
     add({
-      name: 'zoomlot', dur: 2.8, to: { ...camTop, zoom: camTop.zoom + 0.15 },
+      name: 'zoomlot', dur: lotRows.length ? 5.6 : 2.8, to: { ...camTop, zoom: camTop.zoom + 0.15, bearing: camTop.bearing + 8 },
       cam(p) { return lerpCam(this.from, this.to, ease.inOut(p)); },
       ms(p, lt) { return { plot: 1, glow: 0.65 + 0.35 * Math.sin(lt * 5), plot3d: 0, roads: 0 }; },
       draw(ctx, p, lt, E) {
         if (!plot) drawPlotMarker(ctx, E, lt, 1, null);
-        drawAreaLabel(ctx, E, ease.back(seg(p, 0.05, 0.3)), true);
+        drawLotGlow(ctx, E, lt, ease.out(seg(p, 0, 0.12)));
+        if (plot) drawDims(ctx, E, ease.out(seg(p, 0.06, 0.18)), true);
+        if (!lotRows.length) { drawAreaLabel(ctx, E, ease.back(seg(p, 0.05, 0.3)), true); return; }
+        // Thẻ 3D: lật vào + phóng to → lắc qua lại → lật ra
+        let ang, sc, al = 1;
+        if (p < 0.3) { const k = ease.out(seg(p, 0.12, 0.3)); ang = -100 + 100 * k; sc = 0.35 + 0.65 * ease.back(k); al = seg(p, 0.12, 0.16); }
+        else if (p < 0.88) { const k = (p - 0.3) / 0.58; ang = 16 * Math.sin(k * Math.PI * 2); sc = 1 + 0.03 * Math.sin(k * Math.PI * 4); }
+        else { const k = ease.in(seg(p, 0.88, 1)); ang = 95 * k; sc = 1 - 0.3 * k; al = 1 - seg(p, 0.96, 1); }
+        drawLotCard3D(ctx, E, ang, sc, al, (p - 0.3) / 0.58);
       },
     });
   }
@@ -186,6 +217,7 @@ export function buildTimeline(S) {
     ms(p, lt) { return { plot: 0.6 + 0.4 * Math.sin(lt * 4), glow: 0.6 + 0.4 * Math.sin(lt * 4), plot3d: ease.inOut(seg(p, 0, 0.25)), roads: roadsSel.length ? ease.out(seg(p, cardAt + 0.1, cardAt + 0.3)) : 0 }; },
     draw(ctx, p, lt, E) {
       if (roadsSel.length) drawRoadLabels(ctx, E, ease.out(seg(p, cardAt + 0.15, cardAt + 0.3)));
+      drawLotGlow(ctx, E, lt, 1);
       if (plot && S.opts.showDims) drawDims(ctx, E, ease.out(seg(p, 0.1, 0.25)));
       if (!plot) drawPlotMarker(ctx, E, lt, 1, clean ? null : 'VỊ TRÍ');
       drawAreaLabel(ctx, E, 1, false);
@@ -204,10 +236,10 @@ export function buildTimeline(S) {
     const to = { ...fr, zoom: fr.zoom - 0.1, pitch: 42, bearing: i % 2 ? 12 : -12 };
     const sub = cn.distance < 25 ? 'Ngay mặt tiền đường' : routeSub(cn.distance, cn.road);
     add({
-      name: 'road', dur: 3.2, to,
-      cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.4)), arcFor(this.from, this.to, cw) * 0.4); },
+      name: 'road', dur: 3.8, to,
+      cam(p) { return lerpCam(this.from, this.to, ease.inOut(seg(p, 0, 0.5)), arcFor(this.from, this.to, cw) * 0.4); },
       ms(p) {
-        const f = ease.inOut(seg(p, 0.22, 0.66));
+        const f = ease.inOut(seg(p, 0.3, 0.7));
         return {
           plot: 1, glow: 0.5, roads: 0.45 + 0.55 * ease.out(seg(p, 0.55, 0.8)),
           routes: { type: 'FeatureCollection', features: f > 0 ? [lineF(sliceLine(coords, f), ROAD_CAT.color, true)] : [] },
@@ -216,11 +248,11 @@ export function buildTimeline(S) {
       },
       draw(ctx, p, lt, E) {
         drawPlotMarker(ctx, E, lt, 1, null);
-        const f = ease.inOut(seg(p, 0.22, 0.66));
+        const f = ease.inOut(seg(p, 0.3, 0.7));
         if (f > 0 && f < 1) drawComet(ctx, E, coords, f, ROAD_CAT.color, lt);
         const [x, y] = E.project(cn.point);
-        poiPin(ctx, x, y, E.u, ROAD_CAT, ease.back(seg(p, 0.62, 0.76)));
-        poiCard(ctx, x, y, E.u, ROAD_CAT, rd.name, sub, ease.out(seg(p, 0.66, 0.8)), { bounds: E.safe, place: y < E.H * 0.3 ? 'bottom' : 'top' });
+        poiPin(ctx, x, y, E.u, ROAD_CAT, ease.back(seg(p, 0.66, 0.8)));
+        poiCard(ctx, x, y, E.u, ROAD_CAT, rd.name, sub, ease.out(seg(p, 0.7, 0.84)), { bounds: E.safe, place: y < E.H * 0.3 ? 'bottom' : 'top' });
         drawHeader(ctx, E, '🛣️ ĐƯỜNG CHÍNH GẦN NHẤT', '', 1, true);
       },
     });
@@ -454,7 +486,7 @@ export function buildTimeline(S) {
     ms(p, lt) { return { plot: 1, glow: 0.6 + 0.4 * Math.sin(lt * 4), roads: 0.4, routesKey: 'all' }; },
     draw(ctx, p, lt, E) {
       drawPlotMarker(ctx, E, lt, 1, null);
-      if (clean) drawAreaLabel(ctx, E, 1, false);
+      if (clean) { drawLotGlow(ctx, E, lt, 1); drawAreaLabel(ctx, E, 1, false); }
       else drawOutro(ctx, E, ease.out(seg(p, 0.1, 0.35)));
     },
   });
@@ -628,22 +660,178 @@ export function buildTimeline(S) {
     ctx.restore();
   }
 
-  function drawDims(ctx, E, a) {
+  function drawDims(ctx, E, a, big = false) {
     if (a <= 0 || plot.length > 8) return;
-    const lens = edgeLengths(plot);
-    // Lô đất quá nhỏ trên màn hình thì không ghi kích thước (tránh chồng lên ghim)
     const pts = plot.map((q) => E.project(q));
     const span = Math.max(Math.max(...pts.map((q) => q[0])) - Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[1])) - Math.min(...pts.map((q) => q[1])));
-    if (span < 200 * E.u) return;
+    if (span < 160 * E.u) return; // lô đất quá nhỏ trên màn hình
+    const [cx, cy] = [pts.reduce((s, q) => s + q[0], 0) / pts.length, pts.reduce((s, q) => s + q[1], 0) / pts.length];
     ctx.save();
     ctx.globalAlpha = a;
-    plot.forEach((p, i) => {
-      const q = plot[(i + 1) % plot.length];
-      const [x1, y1] = E.project(p), [x2, y2] = E.project(q);
-      if (Math.hypot(x2 - x1, y2 - y1) < 110 * E.u) return;
-      const txt = (Math.round(lens[i] * 10) / 10).toString().replace('.', ',') + ' m';
-      pill(ctx, (x1 + x2) / 2, (y1 + y2) / 2, E.u, txt, 'rgba(15,23,42,.85)', '#fff', 20);
+    pts.forEach((p1, i) => {
+      const p2 = pts[(i + 1) % pts.length];
+      const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      if (len < 70 * E.u) return;
+      // đặt nhãn phía ngoài cạnh
+      let mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2;
+      const ox = mx - cx, oy = my - cy, ol = Math.hypot(ox, oy) || 1;
+      const off = (big ? 34 : 24) * E.u;
+      mx += (ox / ol) * off; my += (oy / ol) * off;
+      shadow(ctx, 14 * E.u, hexA(theme, 0.8));
+      pill(ctx, mx, my, E.u, fmtM(lens[i]), 'rgba(15,23,42,.92)', '#ffffff', big ? 28 : 21);
+      noShadow(ctx);
     });
+    ctx.restore();
+  }
+
+  // Lô đất phát sáng (vẽ trên lớp đồ hoạ để luôn nổi bật, kể cả khi có nhà 3D)
+  function drawLotGlow(ctx, E, lt, a) {
+    if (!plot || a <= 0) return;
+    const u = E.u;
+    const pts = plot.map((q) => E.project(q));
+    const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cy = pts.reduce((s, q) => s + q[1], 0) / pts.length;
+    const path = (k = 1) => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => { const X = cx + (x - cx) * k, Y = cy + (y - cy) * k; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+      ctx.closePath();
+    };
+    const pulse = 0.5 + 0.5 * Math.sin(lt * 4);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.lineJoin = 'round';
+    // nền lô đất sáng nhẹ
+    path();
+    ctx.fillStyle = hexA(theme, 0.22 + 0.12 * pulse);
+    ctx.fill();
+    // hào quang nhiều lớp
+    for (const [lw, al, bl] of [[26, 0.16, 46], [12, 0.4, 26], [5, 0.95, 12]]) {
+      shadow(ctx, bl * u, hexA(theme, 0.95));
+      path();
+      ctx.strokeStyle = hexA(theme, al + 0.1 * pulse);
+      ctx.lineWidth = lw * u;
+      ctx.stroke();
+    }
+    noShadow(ctx);
+    // viền trắng sắc nét
+    path();
+    ctx.strokeStyle = 'rgba(255,255,255,.95)';
+    ctx.lineWidth = 2.6 * u;
+    ctx.stroke();
+    // sóng sáng lan ra ngoài
+    for (let k = 0; k < 2; k++) {
+      const ph = (lt * 0.6 + k * 0.5) % 1;
+      path(1 + ph * 0.9);
+      ctx.strokeStyle = hexA(theme, (1 - ph) * 0.75);
+      ctx.lineWidth = (3.5 - 2 * ph) * u;
+      ctx.stroke();
+    }
+    // chấm sáng ở các góc
+    for (const [x, y] of pts) {
+      shadow(ctx, 16 * u, hexA(theme, 1));
+      ctx.beginPath();
+      ctx.arc(x, y, (6 + 2 * pulse) * u, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    }
+    noShadow(ctx);
+    ctx.restore();
+  }
+
+  // ---- Thẻ "THÔNG TIN LÔ ĐẤT" dạng 3D ----
+  let cardImg = null, cardKey = '';
+  function lotCardCanvas(E) {
+    const u = E.u;
+    const W = Math.round((landscape ? 0.42 : 0.84) * E.W);
+    const key = W + '|' + u;
+    if (cardImg && cardKey === key) return cardImg;
+    const pad = 30 * u, head = 78 * u, rh = 70 * u, m = 40 * u; // m: lề cho bóng sáng
+    const H = Math.round(head + lotRows.length * rh + pad * 1.2);
+    const c = document.createElement('canvas');
+    c.width = W + 2 * m; c.height = H + 2 * m;
+    const g = c.getContext('2d');
+    g.translate(m, m);
+    // nền kính tối + viền sáng
+    g.shadowColor = hexA(theme, 0.85); g.shadowBlur = 34 * u;
+    rrect(g, 0, 0, W, H, 30 * u);
+    const bg = g.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, 'rgba(15,23,42,.96)');
+    bg.addColorStop(1, hexA(theme, 0.55));
+    g.fillStyle = bg;
+    g.fill();
+    g.shadowBlur = 0; g.shadowColor = 'transparent';
+    g.lineWidth = 3.5 * u;
+    g.strokeStyle = hexA(theme, 0.95);
+    g.stroke();
+    // tiêu đề
+    g.fillStyle = theme;
+    rrect(g, pad, 26 * u, 10 * u, 34 * u, 5 * u);
+    g.fill();
+    font(g, 32 * u, 800);
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillText('THÔNG TIN LÔ ĐẤT', pad + 24 * u, 44 * u);
+    g.fillStyle = 'rgba(255,255,255,.16)';
+    g.fillRect(pad, head - 6 * u, W - 2 * pad, 2 * u);
+    lotRows.forEach(([ic, label, value], i) => {
+      const y = head + i * rh + rh / 2;
+      font(g, 32 * u, 600);
+      g.fillStyle = '#fff';
+      g.fillText(ic, pad, y);
+      font(g, 25 * u, 600);
+      g.fillStyle = 'rgba(226,232,240,.8)';
+      g.fillText(label, pad + 56 * u, y);
+      font(g, label === 'Diện tích' ? 40 * u : 32 * u, 800);
+      g.fillStyle = label === 'Diện tích' ? '#ffffff' : '#f8fafc';
+      g.textAlign = 'right';
+      const v = wrap(g, value, W - pad * 2 - 260 * u, 1)[0] || '';
+      g.fillText(v, W - pad, y);
+      g.textAlign = 'left';
+    });
+    cardImg = c; cardKey = key;
+    return c;
+  }
+
+  function drawLotCard3D(ctx, E, angleDeg, scale, alpha, shineT) {
+    if (alpha <= 0.01 || scale <= 0.01) return;
+    const img = lotCardCanvas(E);
+    const ang = Math.max(-88, Math.min(88, angleDeg)) * Math.PI / 180;
+    const w = img.width * scale, h = img.height * scale;
+    const cx = landscape ? E.W * 0.73 : E.W / 2;
+    const cy = landscape ? E.H * 0.55 : E.H * (portrait ? 0.76 : 0.72);
+    // vệt sáng lướt qua mặt thẻ
+    let src = img;
+    if (shineT > 0 && shineT < 1) {
+      const t = document.createElement('canvas');
+      t.width = img.width; t.height = img.height;
+      const g = t.getContext('2d');
+      g.drawImage(img, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      const sx = (shineT * 1.6 - 0.3) * img.width;
+      const lg = g.createLinearGradient(sx - img.width * 0.15, 0, sx + img.width * 0.15, img.height);
+      lg.addColorStop(0, 'rgba(255,255,255,0)');
+      lg.addColorStop(0.5, 'rgba(255,255,255,.28)');
+      lg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = lg;
+      g.fillRect(0, 0, img.width, img.height);
+      src = t;
+    }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // bóng đổ dưới thẻ
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + h * 0.47, w * 0.38 * Math.abs(Math.cos(ang)), 18 * E.u * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // xoay quanh trục dọc có phối cảnh: vẽ thẻ thành nhiều lát dọc
+    const D = w * 2.4, N = 60;
+    const proj = (uu) => { const z = uu * Math.sin(ang); const f = D / (D + z); return [cx + uu * Math.cos(ang) * f, f]; };
+    for (let i = 0; i < N; i++) {
+      const u0 = -w / 2 + (w * i) / N, u1 = u0 + w / N;
+      const [x0, f0] = proj(u0), [x1, f1] = proj(u1);
+      const f = (f0 + f1) / 2, hh = h * f;
+      ctx.drawImage(src, (img.width * i) / N, 0, img.width / N, img.height, x0, cy - hh / 2, Math.max(0.5, x1 - x0 + 0.6), hh);
+    }
     ctx.restore();
   }
 
