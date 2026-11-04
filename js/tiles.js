@@ -119,7 +119,7 @@ export async function scanTiles(center, radius, roadRadius, onProgress = () => {
       for (let i = 0; i < tl.length; i++) {
         const f = tl.feature(i);
         const cls = f.properties.class;
-        if (!/^(motorway|trunk|primary|secondary|tertiary)$/.test(cls)) continue;
+        if (/^(path|track|bridleway|footway|cycleway|steps|pedestrian)$/.test(cls)) continue; // mọi đường xe chạy có tên, bỏ lối đi bộ
         const name = f.properties['name:vi'] || f.properties.name || f.properties['name:latin'];
         if (!name) continue;
         const g = f.toGeoJSON(x, y, Z).geometry;

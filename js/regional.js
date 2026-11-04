@@ -4,12 +4,12 @@ import { haversine, nearestOnLine } from './geo.js';
 
 // Toạ độ lấy từ OpenStreetMap (Nominatim), 11/2026
 export const LANDMARKS = [
-  // Thứ tự mặc định = thứ tự bay trong cảnh Kết nối vùng
-  { id: 'tdm_center', name: 'Trung tâm Thủ Dầu Một', short: 'TT Thủ Dầu Một', icon: '🏙️', lngLat: [106.65131, 10.97734], def: true },
-  { id: 'hcm_center', name: 'Trung tâm TP.HCM', short: 'Trung tâm TP.HCM', icon: '🏙️', lngLat: [106.69803, 10.77253], def: true },
-  { id: 'tsn', name: 'Sân bay Tân Sơn Nhất', short: 'Sân bay Tân Sơn Nhất', icon: '✈️', lngLat: [106.66480, 10.81310], def: true },
-  { id: 'long_thanh', name: 'Sân bay Long Thành', short: 'Sân bay Long Thành', icon: '✈️', lngLat: [107.05352, 10.77599], def: true },
-  { id: 'cat_lai', name: 'Cảng Cát Lái', short: 'Cảng Cát Lái', icon: '⚓', lngLat: [106.79547, 10.76679], def: true },
+  // Thứ tự trong danh sách = thứ tự bay trong cảnh Kết nối vùng (không chọn sẵn)
+  { id: 'tdm_center', name: 'Trung tâm Thủ Dầu Một', short: 'TT Thủ Dầu Một', icon: '🏙️', lngLat: [106.65131, 10.97734] },
+  { id: 'hcm_center', name: 'Trung tâm TP.HCM', short: 'Trung tâm TP.HCM', icon: '🏙️', lngLat: [106.69803, 10.77253] },
+  { id: 'tsn', name: 'Sân bay Tân Sơn Nhất', short: 'Sân bay Tân Sơn Nhất', icon: '✈️', lngLat: [106.66480, 10.81310] },
+  { id: 'long_thanh', name: 'Sân bay Long Thành', short: 'Sân bay Long Thành', icon: '✈️', lngLat: [107.05352, 10.77599] },
+  { id: 'cat_lai', name: 'Cảng Cát Lái', short: 'Cảng Cát Lái', icon: '⚓', lngLat: [106.79547, 10.76679] },
   { id: 'ga_sg', name: 'Ga Sài Gòn', short: 'Ga Sài Gòn', icon: '🚆', lngLat: [106.67524, 10.78320] },
   { id: 'bx_mien_dong', name: 'Bến xe Miền Đông mới', short: 'BX Miền Đông mới', icon: '🚌', lngLat: [106.81498, 10.87856] },
   { id: 'bx_mien_tay', name: 'Bến xe Miền Tây', short: 'BX Miền Tây', icon: '🚌', lngLat: [106.61852, 10.74105] },

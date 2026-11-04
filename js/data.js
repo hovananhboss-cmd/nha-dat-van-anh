@@ -195,7 +195,7 @@ export async function fetchSurroundings(center, radius = 5000, roadRadius = 1500
     pois.push(p);
   }
   pois.sort((a, b) => a.dist - b.dist);
-  const roads = (tiles.status === 'fulfilled' ? tiles.value.roads : []).sort((a, b) => a.dist - b.dist).slice(0, 12);
+  const roads = (tiles.status === 'fulfilled' ? tiles.value.roads : []).sort((a, b) => a.dist - b.dist);
   const sources = [tiles.status === 'fulfilled' && 'bản đồ OpenFreeMap', ph.status === 'fulfilled' && 'Photon'].filter(Boolean);
   return { pois, roads, sources, seconds: (performance.now() - t0) / 1000 };
 }

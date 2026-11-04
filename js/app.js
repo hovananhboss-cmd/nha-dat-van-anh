@@ -30,9 +30,9 @@ const state = {
   selected: [],
   roads: [],
   roadSel: [], roadMinor: [],
-  lmSel: LANDMARKS.filter((l) => l.def).map((l) => l.id),
+  lmSel: [],
   lmCustom: [],
-  infraSel: INFRA_LIST.map((x) => x.id),
+  infraSel: [],
   iso: null,
   isoKey: '',
   media: [],
@@ -74,9 +74,9 @@ function snapshot() {
   const f = {};
   for (const id of FIELDS) f[id] = val(id);
   return {
-    v: 2,
+    v: 3,
     center: state.center, plot: state.plot, pois: state.pois.slice(0, 500).map(stripRoute), custom: state.custom.map(stripRoute),
-    selected: state.selected, roads: state.roads.map(({ connector, ...r }) => r), roadSel: state.roadSel, roadMinor: state.roadMinor, plotAreaExact: state.plotAreaExact || 0, plotEdgesExact: state.plotEdgesExact || null,
+    selected: state.selected, roads: state.roads.filter((r) => state.roadSel.includes(r.name) || state.roadMinor.includes(r.name)).map(({ connector, ...r }) => r), roadSel: state.roadSel, roadMinor: state.roadMinor, plotAreaExact: state.plotAreaExact || 0, plotEdgesExact: state.plotEdgesExact || null,
     lmSel: state.lmSel, lmCustom: state.lmCustom.map(stripRoute), infraSel: state.infraSel, fields: f,
   };
 }
@@ -105,6 +105,12 @@ function restore(data) {
   });
   const fields = { ...(data.fields || {}) };
   if ((data.v || 1) < 2) { fields.o_style = 'satellite'; fields.o_orbit = '360'; } // mặc định mới: vệ tinh + tên đường, bay 1 vòng
+  if ((data.v || 1) < 3) {
+    // v3: kết nối vùng / hạ tầng không còn chọn sẵn – chỉ bỏ nếu người dùng chưa đổi gì so với mặc định cũ
+    const same = (a, b) => a.length === b.length && b.every((x) => a.includes(x));
+    if (same(state.lmSel, ['tdm_center', 'hcm_center', 'tsn', 'long_thanh', 'cat_lai'])) state.lmSel = [];
+    if (same(state.infraSel, INFRA_LIST.map((x) => x.id))) state.infraSel = [];
+  }
   for (const [id, v] of Object.entries(fields)) {
     const el = $(id);
     if (!el) continue;
@@ -257,7 +263,9 @@ function autoPick() {
     if (byCat[c]) picked.push(byCat[c].id);
   }
   state.selected = state.custom.map((p) => p.id).concat(picked).slice(0, MAX_POI);
-  state.roadSel = state.roads.slice(0, 1).map((r) => r.name);
+  // gợi ý đường chính: đường cấp lớn gần nhất (danh sách giờ có cả đường nhỏ trong khu dân cư)
+  const main = state.roads.find((r) => /^(motorway|trunk|primary|secondary|tertiary)$/.test(r.kind)) || state.roads[0];
+  state.roadSel = main ? [main.name] : [];
   renderPoiList(); renderRoads(); refreshEditor(); markDirty(); save();
 }
 
@@ -402,7 +410,7 @@ async function scan() {
   btn.textContent = '⏳ Đang quét… (tối đa ~30 giây)';
   try {
     const radius = +val('selRadius');
-    const res = await fetchSurroundings(origin(), radius, Math.min(2000, Math.max(1000, radius / 2)), (m) => (btn.textContent = '⏳ ' + m));
+    const res = await fetchSurroundings(origin(), radius, 5000, (m) => (btn.textContent = '⏳ ' + m));
     const keep = new Set(state.selected);
     state.pois = res.pois.slice(0, 600);
     state.roads = res.roads;

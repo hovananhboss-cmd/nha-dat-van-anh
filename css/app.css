@@ -95,7 +95,7 @@ details.sub > * + * { margin-top: 8px; }
 .poi-item .d { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .poi-item .x { padding: 2px 8px; font-size: 12px; }
 .empty { color: var(--muted); padding: 12px; margin: 0; font-size: 14px; }
-.road-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.road-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow-y: auto; }
 .road-list button { font-weight: 500; font-size: 13px; padding: 6px 10px; }
 .road-list button.on { background: #facc15; color: #111827; border-color: #eab308; }
 .road-list button.minor { background: #fef3c7; color: #111827; border-color: #fcd34d; }
