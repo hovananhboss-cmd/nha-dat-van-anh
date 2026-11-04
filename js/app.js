@@ -214,10 +214,9 @@ function afterPlotChange() {
   markDirty(); save();
 }
 
-// Hiện lại vị trí app đang dùng (toạ độ kiểu Google Maps + link) để đối chiếu; dán lại ô này vẫn ra đúng điểm
+// Hiện lại vị trí app đang dùng (toạ độ kiểu Google Maps, ~0,1 m) để đối chiếu; dán lại ô này vẫn ra đúng điểm
 function showCenter(ll) {
-  const ts = `${ll[1].toFixed(7)}, ${ll[0].toFixed(7)}`;
-  $('inLink').value = `${ts} · https://www.google.com/maps?q=${ts.replace(' ', '')}`;
+  $('inLink').value = `${ll[1].toFixed(6)}, ${ll[0].toFixed(6)}`;
 }
 
 function setCenter(ll, fly = true) {
@@ -920,7 +919,9 @@ function fillSelects() {
 }
 
 function bind() {
-  $('btnLocate').onclick = async () => {
+  $('btnLocate').onclick = async (e) => {
+    // nút "Dán": lấy nội dung vừa copy (nếu trình duyệt cho phép); Enter trong ô (click giả) thì dùng chữ đang có
+    if (e && e.isTrusted) { try { const c = (await navigator.clipboard.readText()).trim(); if (c) $('inLink').value = c; } catch (_) {} }
     const raw = $('inLink').value;
     // Lấy riêng đường link nếu người dùng dán cả đoạn chia sẻ ("Tên địa điểm https://maps.app.goo.gl/...")
     const urlMatch = raw.match(/https?:\/\/\S+/);
@@ -941,7 +942,7 @@ function bind() {
         }
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Định vị';
+        btn.textContent = 'Dán';
       }
       return;
     }
