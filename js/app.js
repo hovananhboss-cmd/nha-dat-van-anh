@@ -214,8 +214,15 @@ function afterPlotChange() {
   markDirty(); save();
 }
 
+// Hiện lại vị trí app đang dùng (toạ độ kiểu Google Maps + link) để đối chiếu; dán lại ô này vẫn ra đúng điểm
+function showCenter(ll) {
+  const ts = `${ll[1].toFixed(7)}, ${ll[0].toFixed(7)}`;
+  $('inLink').value = `${ts} · https://www.google.com/maps?q=${ts.replace(' ', '')}`;
+}
+
 function setCenter(ll, fly = true) {
   state.center = ll;
+  showCenter(ll);
   centerMarker.setLngLat(ll).addTo(editor);
   if (fly) editor.flyTo({ center: ll, zoom: 17.5 });
   for (const p of allPois()) { p.dist = haversine(ll, p.lngLat); p.route = null; }
@@ -1105,6 +1112,7 @@ function afterRestore() {
   if (state.center) {
     centerMarker.setLngLat(state.center).addTo(editor);
     editor.jumpTo({ center: state.center, zoom: 16.5 });
+    showCenter(state.center);
   }
   document.documentElement.style.setProperty('--accent', val('o_theme'));
   refreshEditor(); renderPoiList(); renderRoads(); renderRegional(); fitPreview(); markDirty();

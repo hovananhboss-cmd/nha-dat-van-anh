@@ -129,23 +129,23 @@ export function parseLatLng(text) {
   if (!text) return null;
   let t = text.trim();
   try { t = decodeURIComponent(t); } catch (_) {}
-  const pats = [
-    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
-    /[?&](?:q|query|ll|center|destination|daddr|sll)=(?:loc:)?\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/,
-    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
-    /\/place\/(-?\d+\.\d+)\s*,\s*\+?(-?\d+\.\d+)/,
-    /(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{2,3}\.\d{3,})/,
-  ];
-  for (const re of pats) {
-    const m = t.match(re);
-    if (m) {
-      const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
-      if (valid(lat, lng)) return [lng, lat];
+  const first = (pats) => {
+    for (const re of pats) {
+      const m = t.match(re);
+      if (m && valid(parseFloat(m[1]), parseFloat(m[2]))) return [parseFloat(m[2]), parseFloat(m[1])];
     }
-  }
-  // Dạng độ-phút-giây: 10°46'36.8"N 106°42'03.2"E
+    return null;
+  };
+  // Toạ độ ghim trước; "@lat,lng" chỉ là tâm khung bản đồ (lệch ghim vài trăm m khi Google mở bảng bên trái) nên để cuối
+  const pin = first([
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    /[?&](?:q|query|ll|center|destination|daddr|sll)=(?:loc:)?\s*(-?\d+\.\d+)\s*,\s*\+?\s*(-?\d+\.\d+)/,
+    /\/(?:place|search)\/(-?\d+\.\d+)\s*,\s*\+?\s*(-?\d+\.\d+)/,
+  ]);
+  if (pin) return pin;
+  // Dạng độ-phút-giây: 10°46'36.8"N 106°42'03.2"E (trong link dấu cách thành "+")
   const dms = t.match(
-    /(\d+)\s*°\s*(\d+)\s*['′]\s*([\d.]+)\s*["″]?\s*([NS])[\s,]*(\d+)\s*°\s*(\d+)\s*['′]\s*([\d.]+)\s*["″]?\s*([EW])/i
+    /(\d+)\s*°\s*(\d+)\s*['′]\s*([\d.]+)\s*["″]?\s*([NS])[\s,+]*(\d+)\s*°\s*(\d+)\s*['′]\s*([\d.]+)\s*["″]?\s*([EW])/i
   );
   if (dms) {
     let lat = +dms[1] + dms[2] / 60 + dms[3] / 3600;
@@ -154,7 +154,10 @@ export function parseLatLng(text) {
     if (/W/i.test(dms[8])) lng = -lng;
     if (valid(lat, lng)) return [lng, lat];
   }
-  return null;
+  return first([
+    /(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*\+?\s*(-?\d{2,3}\.\d{3,})/,
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+  ]);
 }
 
 export function isShortGoogleLink(text) {
